@@ -24,7 +24,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<string | null>(null);
-  const { signIn, signInWithGoogle, signInWithFacebook, signInWithTwitter } = useAuth();
+  const { signIn, signInWithGoogle, signInWithInstagram, signInWithFacebook, signInWithTwitter } = useAuth();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -51,6 +51,9 @@ export default function LoginScreen() {
       switch (providerId) {
         case 'google':
           result = await signInWithGoogle();
+          break;
+        case 'instagram':
+          result = await signInWithInstagram();
           break;
         case 'facebook':
           result = await signInWithFacebook();

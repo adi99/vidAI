@@ -19,7 +19,7 @@ export default function Index() {
   }
 
   if (session) {
-    return <Redirect href="/(tabs)/feed" />;
+    return <Redirect href="/(tabs)" />;
   }
 
   return <Redirect href="/(auth)/login" />;

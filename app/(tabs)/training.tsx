@@ -11,8 +11,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Upload, Image as ImageIcon, CircleCheck as CheckCircle, Clock, Zap, Star, Crown, Brain, Camera, Trash2, Plus, CircleAlert as AlertCircle, TrendingUp, Shield } from 'lucide-react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import CreditDisplay from '@/components/CreditDisplay';
+import CreditCostDisplay from '@/components/CreditCostDisplay';
 
 export default function TrainingScreen() {
+  const { validateCredits } = useAuth();
   const [uploadedImages, setUploadedImages] = useState<number>(0);
   const [selectedSteps, setSelectedSteps] = useState<600 | 1200 | 2000>(1200);
   const [isTraining, setIsTraining] = useState(false);
@@ -33,9 +37,16 @@ export default function TrainingScreen() {
     }
   };
 
-  const startTraining = () => {
+  const startTraining = async () => {
     if (uploadedImages < 10) {
       Alert.alert('Insufficient Images', 'Please upload at least 10 high-quality images for effective training');
+      return;
+    }
+
+    // Validate credits before training
+    const validation = await validateCredits('training', { steps: selectedSteps });
+    if (!validation.valid) {
+      Alert.alert('Insufficient Credits', validation.message || 'Not enough credits for this training');
       return;
     }
     
@@ -172,6 +183,7 @@ export default function TrainingScreen() {
                 <Text style={styles.statText}>LoRA Training</Text>
               </View>
             </View>
+            <CreditDisplay size="medium" style={{ marginTop: 16 }} />
           </View>
         </LinearGradient>
 
@@ -299,6 +311,12 @@ export default function TrainingScreen() {
               </Text>
             </View>
           )}
+
+          <CreditCostDisplay
+            generationType="training"
+            options={{ steps: selectedSteps }}
+            style={{ marginBottom: 24 }}
+          />
 
           <TouchableOpacity
             style={[

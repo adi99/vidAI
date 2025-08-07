@@ -53,13 +53,38 @@ router.post('/refresh', async (_req, res) => {
 });
 
 // POST /api/auth/logout - Logout user
-router.post('/logout', authenticateUser, async (_req, res) => {
-  // This will be implemented when we add logout logic
-  res.status(501).json({
-    code: 'NOT_IMPLEMENTED',
-    message: 'Logout not yet implemented',
-    timestamp: new Date().toISOString(),
-  });
+router.post('/logout', authenticateUser, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    
+    // In a production app, you would:
+    // 1. Invalidate the JWT token (add to blacklist)
+    // 2. Clear any session data
+    // 3. Update last_seen timestamp
+    // 4. Clear push notification tokens if needed
+    
+    // For now, we'll just update the user's last_seen
+    await supabaseAdmin
+      .from('users')
+      .update({ 
+        last_seen: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    res.json({
+      status: 'success',
+      message: 'Successfully logged out',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Logout error', { error });
+    res.status(500).json({
+      code: 'LOGOUT_ERROR',
+      message: 'Failed to logout',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 export default router;

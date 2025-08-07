@@ -27,7 +27,7 @@ export default function SignupScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<string | null>(null);
-  const { signUp, signInWithGoogle, signInWithFacebook, signInWithTwitter } = useAuth();
+  const { signUp, signInWithGoogle, signInWithInstagram, signInWithFacebook, signInWithTwitter } = useAuth();
 
   const handleSignup = async () => {
     if (!email || !password || !confirmPassword || !username) {
@@ -73,6 +73,9 @@ export default function SignupScreen() {
       switch (providerId) {
         case 'google':
           result = await signInWithGoogle();
+          break;
+        case 'instagram':
+          result = await signInWithInstagram();
           break;
         case 'facebook':
           result = await signInWithFacebook();

@@ -9,10 +9,12 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 // Import route handlers
 import authRoutes from './routes/auth';
-// import generationRoutes from './routes/generation';
-// import trainingRoutes from './routes/training';
-// import socialRoutes from './routes/social';
-// import creditRoutes from './routes/credits';
+import generationRoutes from './routes/generation';
+import trainingRoutes from './routes/training';
+import socialRoutes from './routes/social';
+import userRoutes from './routes/user';
+import subscriptionRoutes from './routes/subscription';
+import notificationRoutes from './routes/notifications';
 import healthRoutes from './routes/health';
 
 const app = express();
@@ -76,10 +78,12 @@ app.get('/health', (_req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-// app.use('/api/generate', generationRoutes);
-// app.use('/api/train', trainingRoutes);
-// app.use('/api/feed', socialRoutes);
-// app.use('/api/credits', creditRoutes);
+app.use('/api/generate', generationRoutes);
+app.use('/api/train', trainingRoutes);
+app.use('/api/feed', socialRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Queue health routes
 app.use('/health', healthRoutes);

@@ -58,7 +58,10 @@ class AuthService {
     }
   }
 
-  // Removed: Instagram OAuth is not supported by Supabase's Provider union
+  async signInWithInstagram() {
+    // Instagram OAuth is not supported by Supabase
+    return { data: null, error: new Error('Instagram OAuth is not supported') };
+  }
 
   async signInWithFacebook() {
     try {

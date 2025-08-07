@@ -12,8 +12,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Type, Image, SkipForward, Play, Upload, Wand as Wand2, Sparkles, Clock, Zap, Crown, Settings, ChevronDown, Film, Palette, Camera } from 'lucide-react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import CreditDisplay from '@/components/CreditDisplay';
+import CreditCostDisplay from '@/components/CreditCostDisplay';
 
 export default function VideoScreen() {
+  const { credits, isSubscribed, validateCredits, getCreditCost } = useAuth();
   const [selectedMode, setSelectedMode] = useState<'text' | 'image' | 'frame'>('text');
   const [prompt, setPrompt] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('5s');
@@ -84,6 +88,17 @@ export default function VideoScreen() {
   const generateVideo = async () => {
     if (!prompt.trim() && selectedMode === 'text') {
       Alert.alert('Error', 'Please enter a prompt');
+      return;
+    }
+
+    // Validate credits before generation
+    const validation = await validateCredits('video', {
+      duration: selectedDuration as '3s' | '5s' | '10s' | '15s',
+      quality: selectedQuality.toLowerCase() as 'basic' | 'standard' | 'high',
+    });
+
+    if (!validation.valid) {
+      Alert.alert('Insufficient Credits', validation.message || 'Not enough credits for this generation');
       return;
     }
 
@@ -267,10 +282,7 @@ export default function VideoScreen() {
             <Text style={styles.headerSubtitle}>
               Transform your imagination into stunning videos
             </Text>
-            <View style={styles.creditsContainer}>
-              <Zap size={16} color="#FCD34D" />
-              <Text style={styles.creditsText}>247 credits remaining</Text>
-            </View>
+            <CreditDisplay size="medium" />
           </View>
         </LinearGradient>
 
@@ -428,6 +440,15 @@ export default function VideoScreen() {
               </View>
             </View>
           </View>
+
+          <CreditCostDisplay
+            generationType="video"
+            options={{
+              duration: selectedDuration as '3s' | '5s' | '10s' | '15s',
+              quality: selectedQuality.toLowerCase() as 'basic' | 'standard' | 'high',
+            }}
+            style={{ marginBottom: 24 }}
+          />
 
           {isGenerating && (
             <View style={styles.progressSection}>

@@ -8,19 +8,38 @@ import {
   SafeAreaView,
   Switch,
   Image,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Settings, Crown, Heart, Grid3x3 as Grid, Film, Bell, Shield, CircleHelp as HelpCircle, LogOut, Check, Star, Zap, TrendingUp, Award, Calendar, Download, Share, Eye, Users, Bookmark } from 'lucide-react-native';
+import { notificationService } from '@/services/notificationService';
+import NotificationPreferences from '@/components/NotificationPreferences';
+import SubscriptionStatusBadge from '@/components/SubscriptionStatusBadge';
+import { useAuth } from '@/contexts/AuthContext';
+import CreditDisplay from '@/components/CreditDisplay';
 
 export default function ProfileScreen() {
-  const [isPremium, setIsPremium] = useState(true);
+  const { user, profile, credits, subscriptionStatus, isSubscribed, signOut } = useAuth();
   const [notifications, setNotifications] = useState(true);
   const [privateProfile, setPrivateProfile] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'videos' | 'images' | 'liked'>('videos');
+  const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
+
+  const testNotification = async () => {
+    try {
+      await notificationService.scheduleLocalNotification(
+        'Test Notification',
+        'This is a test notification to verify the system is working!',
+        { type: 'test' }
+      );
+    } catch (error) {
+      console.error('Failed to send test notification:', error);
+    }
+  };
 
   const userStats = [
-    { label: 'Videos Created', value: '1,247', icon: <Film size={16} color="#8B5CF6" /> },
-    { label: 'Images Generated', value: '15,432', icon: <Grid size={16} color="#EC4899" /> },
+    { label: 'Videos Created', value: profile?.total_videos_generated?.toLocaleString() || '0', icon: <Film size={16} color="#8B5CF6" /> },
+    { label: 'Images Generated', value: profile?.total_images_generated?.toLocaleString() || '0', icon: <Grid size={16} color="#EC4899" /> },
     { label: 'Followers', value: '23.4K', icon: <Users size={16} color="#10B981" /> },
     { label: 'Following', value: '567', icon: <Heart size={16} color="#EF4444" /> },
   ];
@@ -37,7 +56,7 @@ export default function ProfileScreen() {
       price: 'Free',
       period: 'Forever',
       features: ['10 videos/month', '50 images/month', 'Basic models only', 'Standard quality'],
-      current: !isPremium,
+      current: subscriptionStatus === 'free',
       color: ['#6B7280', '#6B7280'],
     },
     {
@@ -45,7 +64,7 @@ export default function ProfileScreen() {
       price: '$9.99',
       period: '/month',
       features: ['Unlimited videos', 'Unlimited images', 'All AI models', 'High quality', 'Priority support'],
-      current: isPremium,
+      current: subscriptionStatus === 'basic',
       color: ['#8B5CF6', '#3B82F6'],
       popular: true,
     },
@@ -54,7 +73,7 @@ export default function ProfileScreen() {
       price: '$19.99',
       period: '/month',
       features: ['Everything in Pro', 'Custom model training', 'API access', 'Commercial license', 'White-label'],
-      current: false,
+      current: subscriptionStatus === 'premium',
       color: ['#F59E0B', '#EF4444'],
     },
   ];
@@ -233,21 +252,34 @@ export default function ProfileScreen() {
                 colors={['#FFFFFF', '#F3F4F6']}
                 style={styles.avatar}
               >
-                <Text style={styles.avatarText}>AI</Text>
+                <Text style={styles.avatarText}>{profile?.username?.substring(0, 2).toUpperCase() || 'AI'}</Text>
               </LinearGradient>
-              {isPremium && (
+              {isSubscribed && (
                 <View style={styles.premiumBadge}>
                   <Crown size={16} color="#FFFFFF" />
                 </View>
               )}
             </View>
-            <Text style={styles.username}>@ai_creator_pro</Text>
+            <Text style={styles.username}>@{profile?.username || user?.email?.split('@')[0] || 'user'}</Text>
             <Text style={styles.bio}>
               Creating stunning AI content daily ✨ | Digital Artist | Tech Enthusiast
             </Text>
+            <View style={styles.profileBadges}>
+              <SubscriptionStatusBadge
+                status={subscriptionStatus}
+                size="medium"
+                daysRemaining={profile?.subscriptionDaysRemaining}
+              />
+              <CreditDisplay size="small" showAddButton onAddCredits={() => {
+                // TODO: Navigate to credit purchase screen
+                console.log('Add credits pressed');
+              }} />
+            </View>
             <View style={styles.joinDate}>
               <Calendar size={14} color="#E5E7EB" />
-              <Text style={styles.joinDateText}>Joined December 2024</Text>
+              <Text style={styles.joinDateText}>
+                Joined {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Recently'}
+              </Text>
             </View>
           </View>
         </LinearGradient>
@@ -311,10 +343,8 @@ export default function ProfileScreen() {
             <SettingRow
               icon={<Bell size={24} color="#8B5CF6" />}
               title="Push Notifications"
-              subtitle="Get notified about new features and updates"
-              showSwitch
-              switchValue={notifications}
-              onSwitchChange={setNotifications}
+              subtitle="Manage notification preferences and permissions"
+              action={() => setShowNotificationPreferences(true)}
             />
             
             <SettingRow
@@ -347,16 +377,49 @@ export default function ProfileScreen() {
               action={() => {}}
             />
             
+            {__DEV__ && (
+              <SettingRow
+                icon={<Bell size={24} color="#F59E0B" />}
+                title="Test Notification"
+                subtitle="Send a test push notification (Development only)"
+                action={testNotification}
+              />
+            )}
+            
             <SettingRow
               icon={<LogOut size={24} color="#EF4444" />}
               title="Sign Out"
               subtitle="Sign out of your account"
-              action={() => {}}
+              action={signOut}
               danger
             />
           </View>
         </View>
       </ScrollView>
+      
+      {/* Notification Preferences Modal */}
+      <Modal
+        visible={showNotificationPreferences}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowNotificationPreferences(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              onPress={() => setShowNotificationPreferences(false)}
+              style={styles.modalCloseButton}
+            >
+              <Text style={styles.modalCloseText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <NotificationPreferences
+            onPreferencesChange={(preferences) => {
+              console.log('Notification preferences updated:', preferences);
+            }}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -430,6 +493,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#E5E7EB',
     opacity: 0.8,
+  },
+  profileBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  creditsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  creditsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   content: {
     padding: 20,
@@ -731,5 +814,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94A3B8',
     lineHeight: 18,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  modalCloseButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  modalCloseText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
   },
 });
