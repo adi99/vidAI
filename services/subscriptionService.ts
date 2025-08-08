@@ -39,6 +39,11 @@ export interface SubscriptionStatus {
   inGracePeriod?: boolean;
   creditsRemaining?: number;
   nextBillingDate?: Date;
+  status?: string;
+  cancelAtPeriodEnd?: boolean;
+  totalCredits?: number;
+  lastValidated?: Date;
+  validationSource?: 'server' | 'local' | 'store';
 }
 
 export interface SubscriptionPurchaseResult {

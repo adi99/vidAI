@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { StyleSheet, ViewStyle } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 interface VideoPlayerProps {
   source: { uri: string };
@@ -15,27 +15,26 @@ export default function VideoPlayer({
   isLooping = true, 
   style 
 }: VideoPlayerProps) {
-  const videoRef = useRef<Video>(null);
+  const player = useVideoPlayer(source, (player) => {
+    player.loop = isLooping;
+    player.muted = false;
+  });
 
   useEffect(() => {
-    if (videoRef.current) {
-      if (shouldPlay) {
-        videoRef.current.playAsync();
-      } else {
-        videoRef.current.pauseAsync();
-      }
+    if (shouldPlay) {
+      player.play();
+    } else {
+      player.pause();
     }
-  }, [shouldPlay]);
+  }, [shouldPlay, player]);
 
   return (
-    <Video
-      ref={videoRef}
-      source={source}
+    <VideoView
+      player={player}
       style={[styles.video, style]}
-      isLooping={isLooping}
-      shouldPlay={shouldPlay}
-      isMuted={false}
-      resizeMode={ResizeMode.COVER}
+      contentFit="cover"
+      allowsFullscreen
+      allowsPictureInPicture
     />
   );
 }

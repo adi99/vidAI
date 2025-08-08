@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import networkService from './networkService';
+import errorHandlingService, { ERROR_CODES } from './errorHandlingService';
 
 // Types for social feed
 export interface FeedItem {
@@ -95,30 +97,29 @@ class SocialService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` }),
-          ...options.headers,
-        },
+      const { headers, ...restOptions } = options;
+      return await networkService.request<T>(url, {
+        ...restOptions,
+        headers: headers as Record<string, string>,
+        timeout: 15000, // 15 second timeout for social requests
+        retries: 2, // Fewer retries for social features
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      return response.json();
     } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Unable to connect to server. Please check your internet connection.');
+      // Transform network errors to more specific social errors
+      const parsedError = errorHandlingService.parseError(error);
+      
+      if (parsedError.code === ERROR_CODES.NETWORK_ERROR) {
+        throw errorHandlingService.parseError({
+          code: ERROR_CODES.SERVICE_UNAVAILABLE,
+          message: 'Social features are temporarily unavailable. Please try again later.',
+          retryable: true,
+        });
       }
-      throw error;
+      
+      throw parsedError;
     }
   }
 
@@ -130,22 +131,30 @@ class SocialService {
     user_id?: string;
     sort?: 'recent' | 'popular' | 'trending';
   } = {}): Promise<FeedResponse> {
-    try {
-      const queryParams = new URLSearchParams();
-      
-      if (params.limit) queryParams.append('limit', params.limit.toString());
-      if (params.offset) queryParams.append('offset', params.offset.toString());
-      if (params.content_type) queryParams.append('content_type', params.content_type);
-      if (params.user_id) queryParams.append('user_id', params.user_id);
-      if (params.sort) queryParams.append('sort', params.sort);
+    return errorHandlingService.withRetry(
+      async () => {
+        try {
+          const queryParams = new URLSearchParams();
+          
+          if (params.limit) queryParams.append('limit', params.limit.toString());
+          if (params.offset) queryParams.append('offset', params.offset.toString());
+          if (params.content_type) queryParams.append('content_type', params.content_type);
+          if (params.user_id) queryParams.append('user_id', params.user_id);
+          if (params.sort) queryParams.append('sort', params.sort);
 
-      const endpoint = `/feed${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-      return await this.makeRequest<FeedResponse>(endpoint);
-    } catch (error) {
-      // Fallback to direct database access if API is not available
-      console.warn('API not available, falling back to direct database access:', error);
-      return this.getFeedFallback(params);
-    }
+          const endpoint = `/feed${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+          return await this.makeRequest<FeedResponse>(endpoint);
+        } catch (error) {
+          // Fallback to direct database access if API is not available
+          console.warn('API not available, falling back to direct database access:', error);
+          return this.getFeedFallback(params);
+        }
+      },
+      {
+        maxRetries: 2,
+        baseDelay: 1000,
+      }
+    );
   }
 
   // Fallback method using direct database access
@@ -165,7 +174,9 @@ class SocialService {
         offset_count: offset,
       });
 
-      if (error) throw error;
+      if (error) {
+        throw networkService.handleSupabaseError(error);
+      }
 
       const feedItems: FeedItem[] = (data || []).map((item: any) => ({
         id: item.id,
@@ -201,7 +212,11 @@ class SocialService {
       };
     } catch (error) {
       console.error('Database fallback failed:', error);
-      throw new Error('Failed to load feed from database');
+      throw errorHandlingService.parseError({
+        code: ERROR_CODES.SERVICE_UNAVAILABLE,
+        message: 'Unable to load feed content. Please try again later.',
+        retryable: true,
+      });
     }
   }
 
@@ -211,19 +226,27 @@ class SocialService {
     contentType: 'video' | 'image',
     action: 'like' | 'unlike' = 'like'
   ): Promise<LikeResponse> {
-    try {
-      return await this.makeRequest<LikeResponse>(`/feed/content/${contentId}/like`, {
-        method: 'POST',
-        body: JSON.stringify({
-          content_type: contentType,
-          action,
-        }),
-      });
-    } catch (error) {
-      // Fallback to direct database access
-      console.warn('API not available for like, falling back to database:', error);
-      return this.toggleLikeFallback(contentId, contentType, action);
-    }
+    return errorHandlingService.withRetry(
+      async () => {
+        try {
+          return await this.makeRequest<LikeResponse>(`/feed/content/${contentId}/like`, {
+            method: 'POST',
+            body: JSON.stringify({
+              content_type: contentType,
+              action,
+            }),
+          });
+        } catch (error) {
+          // Fallback to direct database access
+          console.warn('API not available for like, falling back to database:', error);
+          return this.toggleLikeFallback(contentId, contentType, action);
+        }
+      },
+      {
+        maxRetries: 1, // Only retry once for like actions
+        baseDelay: 500,
+      }
+    );
   }
 
   private async toggleLikeFallback(
@@ -233,7 +256,11 @@ class SocialService {
   ): Promise<LikeResponse> {
     const session = await supabase.auth.getSession();
     if (!session.data.session?.user) {
-      throw new Error('Authentication required');
+      throw errorHandlingService.parseError({
+        code: ERROR_CODES.AUTHENTICATION_ERROR,
+        message: 'Please log in to like content.',
+        retryable: false,
+      });
     }
 
     const userId = session.data.session.user.id;
@@ -241,36 +268,53 @@ class SocialService {
     try {
       if (action === 'like') {
         // Add like
-        await supabase.from('likes').insert({
+        const { error: insertError } = await supabase.from('likes').insert({
           user_id: userId,
           content_id: contentId,
           content_type: contentType,
         });
+        
+        if (insertError) {
+          throw networkService.handleSupabaseError(insertError);
+        }
       } else {
         // Remove like
-        await supabase
+        const { error: deleteError } = await supabase
           .from('likes')
           .delete()
           .eq('user_id', userId)
           .eq('content_id', contentId)
           .eq('content_type', contentType);
+          
+        if (deleteError) {
+          throw networkService.handleSupabaseError(deleteError);
+        }
       }
 
       // Get updated like count
-      const { count } = await supabase
+      const { count, error: countError } = await supabase
         .from('likes')
         .select('*', { count: 'exact' })
         .eq('content_id', contentId)
         .eq('content_type', contentType);
+        
+      if (countError) {
+        throw networkService.handleSupabaseError(countError);
+      }
 
       // Check if user currently likes this content
-      const { data: userLike } = await supabase
+      const { data: userLike, error: checkError } = await supabase
         .from('likes')
         .select('id')
         .eq('user_id', userId)
         .eq('content_id', contentId)
         .eq('content_type', contentType)
         .single();
+        
+      // Don't throw error if no like found, that's expected
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw networkService.handleSupabaseError(checkError);
+      }
 
       return {
         status: 'ok',
@@ -283,7 +327,11 @@ class SocialService {
       };
     } catch (error) {
       console.error('Database like fallback failed:', error);
-      throw new Error('Failed to update like status');
+      throw errorHandlingService.parseError({
+        code: ERROR_CODES.SERVICE_UNAVAILABLE,
+        message: 'Unable to update like status. Please try again.',
+        retryable: true,
+      });
     }
   }
 

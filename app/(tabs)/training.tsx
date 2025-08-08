@@ -19,6 +19,14 @@ import CreditDisplay from '@/components/CreditDisplay';
 import CreditCostDisplay from '@/components/CreditCostDisplay';
 import TrainingTest from '@/components/TrainingTest';
 
+// Import animation components for enhanced UX
+import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
+import AnimatedCard from '@/components/ui/AnimatedCard';
+import GenerationProgress from '@/components/ui/GenerationProgress';
+import StateTransition from '@/components/ui/StateTransition';
+import SmoothProgressBar from '@/components/ui/SmoothProgressBar';
+import * as Haptics from 'expo-haptics';
+
 export default function TrainingScreen() {
   const {
     // Image management
@@ -95,13 +103,22 @@ export default function TrainingScreen() {
   ];
 
   const TrainingStepCard = ({ step }: { step: any }) => (
-    <TouchableOpacity
-      style={[
+    <AnimatedCard
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setSelectedSteps(step.steps);
+      }}
+      selected={selectedSteps === step.steps}
+      style={StyleSheet.flatten([
         styles.stepCard,
-        selectedSteps === step.steps && styles.selectedStepCard,
         step.recommended && styles.recommendedCard
-      ]}
-      onPress={() => setSelectedSteps(step.steps)}
+      ])}
+      hapticFeedback={false} // We handle haptics manually
+      animateOnPress={true}
+      scaleOnPress={0.98}
+      glowOnSelect={true}
+      padding={0}
+      margin={0}
     >
       {step.recommended && (
         <View style={styles.recommendedBadge}>
@@ -109,22 +126,24 @@ export default function TrainingScreen() {
           <Text style={styles.recommendedText}>RECOMMENDED</Text>
         </View>
       )}
-      <LinearGradient
-        colors={selectedSteps === step.steps ? ['#F59E0B', '#EF4444'] : ['#374151', '#374151']}
-        style={styles.stepIconContainer}
-      >
-        {step.icon}
-      </LinearGradient>
-      <View style={styles.stepContent}>
-        <Text style={styles.stepTitle}>{step.steps} Steps</Text>
-        <Text style={styles.stepQuality}>{step.quality}</Text>
-        <Text style={styles.stepDescription}>{step.description}</Text>
-        <View style={styles.stepFooter}>
-          <Text style={styles.stepDuration}>{step.duration}</Text>
-          <Text style={styles.stepPrice}>{step.price}</Text>
+      <View style={styles.stepCardContent}>
+        <LinearGradient
+          colors={selectedSteps === step.steps ? ['#F59E0B', '#EF4444'] : ['#374151', '#374151']}
+          style={styles.stepIconContainer}
+        >
+          {step.icon}
+        </LinearGradient>
+        <View style={styles.stepContent}>
+          <Text style={styles.stepTitle}>{step.steps} Steps</Text>
+          <Text style={styles.stepQuality}>{step.quality}</Text>
+          <Text style={styles.stepDescription}>{step.description}</Text>
+          <View style={styles.stepFooter}>
+            <Text style={styles.stepDuration}>{step.duration}</Text>
+            <Text style={styles.stepPrice}>{step.price}</Text>
+          </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   const ImageSlot = ({ index }: { index: number }) => {
@@ -227,10 +246,20 @@ export default function TrainingScreen() {
               ))}
             </View>
 
-            <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={addImages}
+            <AnimatedCard
+              onPress={async () => {
+                if (!isLoading) {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  addImages();
+                }
+              }}
               disabled={isLoading}
+              style={styles.uploadButton}
+              hapticFeedback={false} // We handle haptics manually
+              animateOnPress={true}
+              scaleOnPress={0.98}
+              padding={0}
+              margin={0}
             >
               <LinearGradient
                 colors={['#8B5CF6', '#3B82F6']}
@@ -241,7 +270,7 @@ export default function TrainingScreen() {
                   {isLoading ? 'Processing...' : 'Add Images (Multiple Selection)'}
                 </Text>
               </LinearGradient>
-            </TouchableOpacity>
+            </AnimatedCard>
 
             {uploadedImages.length > 0 && (
               <TouchableOpacity
@@ -253,14 +282,16 @@ export default function TrainingScreen() {
             )}
 
             <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View 
-                  style={[
-                    styles.progressFill, 
-                    { width: `${Math.min((uploadedImages.length / 10) * 100, 100)}%` }
-                  ]} 
-                />
-              </View>
+              <SmoothProgressBar
+                progress={Math.min((uploadedImages.length / 10) * 100, 100)}
+                label="Upload Progress"
+                showPercentage={false}
+                height={8}
+                animated={true}
+                hapticFeedback={true}
+                pulseOnComplete={true}
+                showGlow={true}
+              />
               <Text style={styles.progressText}>
                 {uploadedImages.length >= 10 
                   ? `Ready to train! ${uploadedImages.length} images uploaded` 
@@ -339,67 +370,98 @@ export default function TrainingScreen() {
           )}
 
           {/* Training Progress */}
-          {isTraining && (
-            <View style={styles.trainingProgressSection}>
-              <View style={styles.trainingHeader}>
-                <Brain size={20} color="#F59E0B" />
-                <Text style={styles.trainingTitle}>Training in Progress</Text>
-              </View>
-              <View style={styles.trainingProgressBar}>
-                <View style={[styles.trainingProgressFill, { width: `${trainingProgress}%` }]} />
-              </View>
-              <View style={styles.progressInfo}>
-                <Text style={styles.trainingProgressText}>{trainingProgress}% complete</Text>
-                {trainingProgress > 0 && (
-                  <Text style={styles.estimatedTime}>
-                    ~{Math.ceil((100 - trainingProgress) * (selectedSteps / 100) / 60)} min remaining
-                  </Text>
-                )}
-              </View>
-              <Text style={styles.trainingSubtext}>
-                Training your custom model "{modelName}" with {uploadedImages.length} images using {selectedSteps} steps
-              </Text>
-              {currentTrainingJob && (
-                <Text style={styles.jobIdText}>
-                  Job ID: {currentTrainingJob.id}
-                </Text>
-              )}
-            </View>
-          )}
+          <GenerationProgress
+            progress={trainingProgress}
+            type="edit" // Using 'edit' type as it's closest to training
+            isActive={isTraining}
+            onCancel={() => {
+              Alert.alert(
+                'Cancel Training',
+                'Are you sure you want to cancel the training? This action cannot be undone.',
+                [
+                  { text: 'Continue Training', style: 'cancel' },
+                  { 
+                    text: 'Cancel Training', 
+                    style: 'destructive',
+                    onPress: () => {
+                      // Add cancel training logic here if available
+                      console.log('Training cancelled');
+                    }
+                  }
+                ]
+              );
+            }}
+            estimatedTime={selectedSteps ? Math.ceil(selectedSteps / 20) * 60 : undefined} // Rough estimate
+            currentStep={
+              trainingProgress < 20 ? `Preparing training data for "${modelName}"...` :
+              trainingProgress < 40 ? `Training LoRA model with ${uploadedImages.length} images...` :
+              trainingProgress < 60 ? `Processing ${selectedSteps} training steps...` :
+              trainingProgress < 80 ? `Optimizing model weights...` :
+              trainingProgress < 95 ? `Finalizing custom model...` :
+              `Training complete! Model "${modelName}" is ready.`
+            }
+            showSteps={true}
+          />
 
           {/* Trained Models Section */}
           {trainedModels.length > 0 && (
-            <View style={styles.modelsSection}>
-              <View style={styles.modelsHeader}>
-                <Text style={styles.sectionTitle}>Your Trained Models</Text>
-                <TouchableOpacity onPress={loadTrainedModels}>
-                  <Text style={styles.refreshText}>Refresh</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.modelsContainer}>
-                  {trainedModels.slice(0, 5).map((model) => (
-                    <View key={model.id} style={styles.modelCard}>
-                      <View style={[
-                        styles.modelStatus,
-                        { backgroundColor: 
-                          model.status === 'completed' ? '#10B981' :
-                          model.status === 'processing' ? '#F59E0B' :
-                          model.status === 'failed' ? '#EF4444' : '#6B7280'
-                        }
-                      ]}>
-                        <Text style={styles.modelStatusText}>
-                          {model.status.toUpperCase()}
-                        </Text>
-                      </View>
-                      <Text style={styles.modelName}>{model.modelName}</Text>
-                      <Text style={styles.modelSteps}>{model.steps} steps</Text>
-                      <Text style={styles.modelCredits}>{model.creditsUsed} credits</Text>
-                    </View>
-                  ))}
+            <StateTransition
+              state="models-loaded"
+              type="slide"
+              direction="up"
+              duration={300}
+            >
+              <View style={styles.modelsSection}>
+                <View style={styles.modelsHeader}>
+                  <Text style={styles.sectionTitle}>Your Trained Models</Text>
+                  <AnimatedCard
+                    onPress={async () => {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      loadTrainedModels();
+                    }}
+                    style={styles.refreshButton}
+                    hapticFeedback={false} // We handle haptics manually
+                    animateOnPress={true}
+                    scaleOnPress={0.95}
+                    padding={8}
+                    margin={0}
+                  >
+                    <Text style={styles.refreshText}>Refresh</Text>
+                  </AnimatedCard>
                 </View>
-              </ScrollView>
-            </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.modelsContainer}>
+                    {trainedModels.slice(0, 5).map((model, index) => (
+                      <AnimatedCard
+                        key={model.id}
+                        style={styles.modelCard}
+                        delay={index * 100}
+                        animateOnPress={true}
+                        scaleOnPress={0.98}
+                        padding={16}
+                        margin={0}
+                      >
+                        <View style={[
+                          styles.modelStatus,
+                          { backgroundColor: 
+                            model.status === 'completed' ? '#10B981' :
+                            model.status === 'processing' ? '#F59E0B' :
+                            model.status === 'failed' ? '#EF4444' : '#6B7280'
+                          }
+                        ]}>
+                          <Text style={styles.modelStatusText}>
+                            {model.status.toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={styles.modelName}>{model.modelName}</Text>
+                        <Text style={styles.modelSteps}>{model.steps} steps</Text>
+                        <Text style={styles.modelCredits}>{model.creditsUsed} credits</Text>
+                      </AnimatedCard>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+            </StateTransition>
           )}
 
           <CreditCostDisplay
@@ -408,14 +470,26 @@ export default function TrainingScreen() {
             style={{ marginBottom: 24 }}
           />
 
-          <TouchableOpacity
-            style={[
+          <AnimatedCard
+            onPress={async () => {
+              if (canStartTraining && !isTraining && !isLoading) {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                startTraining();
+              } else if (!canStartTraining) {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              }
+            }}
+            disabled={!canStartTraining || isTraining || isLoading}
+            style={StyleSheet.flatten([
               styles.trainButton,
               !canStartTraining && styles.disabledTrainButton,
               (isTraining || isLoading) && styles.trainingButton
-            ]}
-            onPress={startTraining}
-            disabled={!canStartTraining || isTraining || isLoading}
+            ])}
+            hapticFeedback={false} // We handle haptics manually
+            animateOnPress={true}
+            scaleOnPress={0.98}
+            padding={0}
+            margin={0}
           >
             <LinearGradient
               colors={
@@ -444,7 +518,7 @@ export default function TrainingScreen() {
                 </>
               )}
             </LinearGradient>
-          </TouchableOpacity>
+          </AnimatedCard>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -684,17 +758,15 @@ const styles = StyleSheet.create({
   stepCard: {
     backgroundColor: '#1E293B',
     borderRadius: 20,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
     position: 'relative',
-    gap: 16,
   },
-  selectedStepCard: {
-    borderColor: '#F59E0B',
-    backgroundColor: '#292524',
+  stepCardContent: {
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   recommendedCard: {
     borderColor: '#F59E0B',
@@ -882,6 +954,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  refreshButton: {
+    backgroundColor: 'transparent',
+  },
   refreshText: {
     fontSize: 14,
     color: '#F59E0B',
@@ -894,9 +969,9 @@ const styles = StyleSheet.create({
   modelCard: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
-    padding: 16,
     width: 140,
     position: 'relative',
+    marginRight: 12,
   },
   modelStatus: {
     position: 'absolute',

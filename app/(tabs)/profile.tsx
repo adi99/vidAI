@@ -22,6 +22,12 @@ import { useProfile } from '@/hooks/useProfile';
 import CreditDisplay from '@/components/CreditDisplay';
 import CreditPurchaseButton from '@/components/CreditPurchaseButton';
 
+// Import animation components for enhanced UX
+import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
+import AnimatedCard from '@/components/ui/AnimatedCard';
+import SmoothTabTransition from '@/components/ui/SmoothTabTransition';
+import * as Haptics from 'expo-haptics';
+
 export default function ProfileScreen() {
   const { user, profile, credits, subscriptionStatus, isSubscribed, signOut } = useAuth();
   const {
@@ -148,17 +154,31 @@ export default function ProfileScreen() {
   };
 
   const StatCard = ({ stat }: { stat: any }) => (
-    <View style={styles.statCard}>
+    <AnimatedCard
+      style={styles.statCard}
+      animateOnPress={true}
+      scaleOnPress={0.98}
+      padding={16}
+      margin={0}
+      delay={Math.random() * 200} // Stagger animation
+    >
       <View style={styles.statIcon}>
         {stat.icon}
       </View>
       <Text style={styles.statValue}>{stat.value}</Text>
       <Text style={styles.statLabel}>{stat.label}</Text>
-    </View>
+    </AnimatedCard>
   );
 
   const AchievementCard = ({ achievement }: { achievement: any }) => (
-    <View style={styles.achievementCard}>
+    <AnimatedCard
+      style={styles.achievementCard}
+      animateOnPress={true}
+      scaleOnPress={0.98}
+      padding={16}
+      margin={0}
+      delay={Math.random() * 300} // Stagger animation
+    >
       <View style={styles.achievementIcon}>
         {getAchievementIcon(achievement.icon)}
       </View>
@@ -175,11 +195,20 @@ export default function ProfileScreen() {
           </Text>
         )}
       </View>
-    </View>
+    </AnimatedCard>
   );
 
   const SubscriptionCard = ({ plan }: { plan: any }) => (
-    <View style={[styles.subscriptionCard, plan.current && styles.currentPlan]}>
+    <AnimatedCard
+      style={StyleSheet.flatten([styles.subscriptionCard, plan.current && styles.currentPlan])}
+      selected={plan.current}
+      animateOnPress={true}
+      scaleOnPress={0.98}
+      padding={24}
+      margin={0}
+      delay={Math.random() * 200} // Stagger animation
+      glowOnSelect={true}
+    >
       {plan.popular && (
         <View style={styles.popularBadge}>
           <Star size={12} color="#FFFFFF" />
@@ -206,14 +235,20 @@ export default function ProfileScreen() {
         ))}
       </View>
       {!plan.current && (
-        <TouchableOpacity 
-          style={styles.upgradeButton}
-          onPress={() => {
+        <AnimatedCard
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             const currentPlanId = backendSubscriptionStatus?.planId || 'basic';
             const action = plan.id === 'basic' ? 'downgrade' : 
                           currentPlanId === 'basic' ? 'subscribe' : 'upgrade';
             handleSubscriptionAction(action, plan.id);
           }}
+          style={styles.upgradeButton}
+          hapticFeedback={false} // We handle haptics manually
+          animateOnPress={true}
+          scaleOnPress={0.98}
+          padding={0}
+          margin={0}
         >
           <LinearGradient
             colors={plan.color}
@@ -224,13 +259,20 @@ export default function ProfileScreen() {
                backendSubscriptionStatus?.planId === 'basic' ? 'Subscribe' : 'Upgrade'}
             </Text>
           </LinearGradient>
-        </TouchableOpacity>
+        </AnimatedCard>
       )}
-    </View>
+    </AnimatedCard>
   );
 
   const ContentCard = ({ content }: { content: any }) => (
-    <View style={styles.contentCard}>
+    <AnimatedCard
+      style={styles.contentCard}
+      animateOnPress={true}
+      scaleOnPress={0.98}
+      padding={16}
+      margin={0}
+      delay={Math.random() * 150} // Stagger animation
+    >
       <View style={styles.contentPreview}>
         {content.content_type === 'video' ? (
           content.thumbnail_url ? (
@@ -266,20 +308,36 @@ export default function ProfileScreen() {
         </View>
       </View>
       <View style={styles.contentActions}>
-        <TouchableOpacity 
+        <AnimatedCard
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            shareContent(content.id);
+          }}
           style={styles.contentAction}
-          onPress={() => shareContent(content.id)}
+          hapticFeedback={false} // We handle haptics manually
+          animateOnPress={true}
+          scaleOnPress={0.9}
+          padding={8}
+          margin={0}
         >
           <Share size={16} color="#8B5CF6" />
-        </TouchableOpacity>
-        <TouchableOpacity 
+        </AnimatedCard>
+        <AnimatedCard
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            deleteContent(content.id);
+          }}
           style={styles.contentAction}
-          onPress={() => deleteContent(content.id)}
+          hapticFeedback={false} // We handle haptics manually
+          animateOnPress={true}
+          scaleOnPress={0.9}
+          padding={8}
+          margin={0}
         >
           <Trash2 size={16} color="#EF4444" />
-        </TouchableOpacity>
+        </AnimatedCard>
       </View>
-    </View>
+    </AnimatedCard>
   );
 
   const SettingRow = ({ 
@@ -301,10 +359,20 @@ export default function ProfileScreen() {
     onSwitchChange?: (value: boolean) => void;
     danger?: boolean;
   }) => (
-    <TouchableOpacity 
-      style={styles.settingRow} 
-      onPress={action}
+    <AnimatedCard
+      onPress={async () => {
+        if (action && !showSwitch) {
+          await Haptics.impactAsync(danger ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+          action();
+        }
+      }}
       disabled={showSwitch}
+      style={styles.settingRow}
+      hapticFeedback={false} // We handle haptics manually
+      animateOnPress={!showSwitch}
+      scaleOnPress={0.98}
+      padding={20}
+      margin={0}
     >
       <View style={[styles.settingIcon, danger && styles.dangerIcon]}>
         {icon}
@@ -316,12 +384,15 @@ export default function ProfileScreen() {
       {showSwitch && (
         <Switch
           value={switchValue}
-          onValueChange={onSwitchChange}
+          onValueChange={async (value) => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onSwitchChange?.(value);
+          }}
           trackColor={{ false: '#374151', true: '#8B5CF6' }}
           thumbColor="#FFFFFF"
         />
       )}
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   const TabButton = ({ 
@@ -333,15 +404,25 @@ export default function ProfileScreen() {
     icon: React.ReactNode;
     title: string;
   }) => (
-    <TouchableOpacity
-      style={[styles.tabButton, selectedContentTab === tab && styles.activeTabButton]}
-      onPress={() => setSelectedContentTab(tab)}
+    <AnimatedCard
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setSelectedContentTab(tab);
+      }}
+      selected={selectedContentTab === tab}
+      style={StyleSheet.flatten([styles.tabButton, selectedContentTab === tab && styles.activeTabButton])}
+      hapticFeedback={false} // We handle haptics manually
+      animateOnPress={true}
+      scaleOnPress={0.98}
+      glowOnSelect={false} // We use background color instead
+      padding={12}
+      margin={0}
     >
       {icon}
       <Text style={[styles.tabButtonText, selectedContentTab === tab && styles.activeTabButtonText]}>
         {title}
       </Text>
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   return (
@@ -413,7 +494,7 @@ export default function ProfileScreen() {
           <View style={styles.achievementsSection}>
             <Text style={styles.sectionTitle}>Achievements</Text>
             {isLoading ? (
-              <ActivityIndicator size="small" color="#8B5CF6" style={{ marginVertical: 20 }} />
+              <LoadingSkeleton type="list" count={3} height={80} />
             ) : achievements.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.achievementsContainer}>
@@ -446,36 +527,131 @@ export default function ProfileScreen() {
               />
             </View>
             
-            <View style={styles.contentGrid}>
-              {isLoadingContent && userContent.length === 0 ? (
-                <ActivityIndicator size="small" color="#8B5CF6" style={{ marginVertical: 20 }} />
-              ) : userContent.length > 0 ? (
-                <>
-                  {userContent.map((content, index) => (
-                    <ContentCard key={content.id} content={content} />
-                  ))}
-                  {hasMoreContent && (
-                    <TouchableOpacity 
-                      style={styles.loadMoreButton}
-                      onPress={loadMoreContent}
-                      disabled={isLoadingContent}
-                    >
-                      {isLoadingContent ? (
-                        <ActivityIndicator size="small" color="#8B5CF6" />
+            <SmoothTabTransition
+              activeTab={selectedContentTab}
+              tabs={[
+                {
+                  key: 'videos',
+                  content: (
+                    <View style={styles.contentGrid}>
+                      {isLoadingContent && userContent.length === 0 ? (
+                        <LoadingSkeleton type="grid" count={6} height={120} />
+                      ) : userContent.filter(c => c.content_type === 'video').length > 0 ? (
+                        <>
+                          {userContent.filter(c => c.content_type === 'video').map((content, index) => (
+                            <ContentCard key={content.id} content={content} />
+                          ))}
+                          {hasMoreContent && (
+                            <AnimatedCard
+                              onPress={async () => {
+                                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                loadMoreContent();
+                              }}
+                              disabled={isLoadingContent}
+                              style={styles.loadMoreButton}
+                              hapticFeedback={false} // We handle haptics manually
+                              animateOnPress={true}
+                              scaleOnPress={0.98}
+                              padding={16}
+                              margin={0}
+                            >
+                              {isLoadingContent ? (
+                                <LoadingSkeleton type="button" height={20} />
+                              ) : (
+                                <Text style={styles.loadMoreText}>Load More</Text>
+                              )}
+                            </AnimatedCard>
+                          )}
+                        </>
                       ) : (
-                        <Text style={styles.loadMoreText}>Load More</Text>
+                        <Text style={styles.emptyText}>No videos created yet</Text>
                       )}
-                    </TouchableOpacity>
-                  )}
-                </>
-              ) : (
-                <Text style={styles.emptyText}>
-                  {selectedContentTab === 'videos' ? 'No videos created yet' :
-                   selectedContentTab === 'images' ? 'No images generated yet' :
-                   'No liked content yet'}
-                </Text>
-              )}
-            </View>
+                    </View>
+                  )
+                },
+                {
+                  key: 'images',
+                  content: (
+                    <View style={styles.contentGrid}>
+                      {isLoadingContent && userContent.length === 0 ? (
+                        <LoadingSkeleton type="grid" count={6} height={120} />
+                      ) : userContent.filter(c => c.content_type === 'image').length > 0 ? (
+                        <>
+                          {userContent.filter(c => c.content_type === 'image').map((content, index) => (
+                            <ContentCard key={content.id} content={content} />
+                          ))}
+                          {hasMoreContent && (
+                            <AnimatedCard
+                              onPress={async () => {
+                                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                loadMoreContent();
+                              }}
+                              disabled={isLoadingContent}
+                              style={styles.loadMoreButton}
+                              hapticFeedback={false} // We handle haptics manually
+                              animateOnPress={true}
+                              scaleOnPress={0.98}
+                              padding={16}
+                              margin={0}
+                            >
+                              {isLoadingContent ? (
+                                <LoadingSkeleton type="button" height={20} />
+                              ) : (
+                                <Text style={styles.loadMoreText}>Load More</Text>
+                              )}
+                            </AnimatedCard>
+                          )}
+                        </>
+                      ) : (
+                        <Text style={styles.emptyText}>No images generated yet</Text>
+                      )}
+                    </View>
+                  )
+                },
+                {
+                  key: 'liked',
+                  content: (
+                    <View style={styles.contentGrid}>
+                      {isLoadingContent && userContent.length === 0 ? (
+                        <LoadingSkeleton type="grid" count={6} height={120} />
+                      ) : userContent.filter(c => c.is_liked).length > 0 ? (
+                        <>
+                          {userContent.filter(c => c.is_liked).map((content, index) => (
+                            <ContentCard key={content.id} content={content} />
+                          ))}
+                          {hasMoreContent && (
+                            <AnimatedCard
+                              onPress={async () => {
+                                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                loadMoreContent();
+                              }}
+                              disabled={isLoadingContent}
+                              style={styles.loadMoreButton}
+                              hapticFeedback={false} // We handle haptics manually
+                              animateOnPress={true}
+                              scaleOnPress={0.98}
+                              padding={16}
+                              margin={0}
+                            >
+                              {isLoadingContent ? (
+                                <LoadingSkeleton type="button" height={20} />
+                              ) : (
+                                <Text style={styles.loadMoreText}>Load More</Text>
+                              )}
+                            </AnimatedCard>
+                          )}
+                        </>
+                      ) : (
+                        <Text style={styles.emptyText}>No liked content yet</Text>
+                      )}
+                    </View>
+                  )
+                }
+              ]}
+              direction="horizontal"
+              duration={300}
+              staggerDelay={50}
+            />
           </View>
 
           <View style={styles.creditPurchaseSection}>
@@ -498,7 +674,7 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>Subscription Plans</Text>
             <View style={styles.subscriptionGrid}>
               {isLoading ? (
-                <ActivityIndicator size="small" color="#8B5CF6" style={{ marginVertical: 20 }} />
+                <LoadingSkeleton type="card" count={3} height={200} />
               ) : (
                 getSubscriptionPlansWithStatus().map((plan, index) => (
                   <SubscriptionCard key={plan.id} plan={plan} />
@@ -698,7 +874,6 @@ const styles = StyleSheet.create({
     minWidth: '45%',
     backgroundColor: '#1E293B',
     borderRadius: 16,
-    padding: 16,
     alignItems: 'center',
     gap: 8,
   },
@@ -738,7 +913,6 @@ const styles = StyleSheet.create({
   achievementCard: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
-    padding: 16,
     width: 200,
     flexDirection: 'row',
     alignItems: 'center',
@@ -786,7 +960,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
     borderRadius: 12,
     gap: 8,
   },
@@ -807,7 +980,6 @@ const styles = StyleSheet.create({
   contentCard: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
-    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
@@ -905,7 +1077,6 @@ const styles = StyleSheet.create({
   subscriptionCard: {
     backgroundColor: '#1E293B',
     borderRadius: 20,
-    padding: 24,
     position: 'relative',
     borderWidth: 2,
     borderColor: 'transparent',
@@ -1002,7 +1173,6 @@ const styles = StyleSheet.create({
   settingRow: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
-    padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,

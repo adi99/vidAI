@@ -80,7 +80,7 @@ Required environment variables in `.env`:
 ## Key Dependencies
 - `@supabase/supabase-js`: Database and auth client
 - `expo-router`: File-based navigation
-- `expo-av`: Video playback
+- `expo-video`: Video playback
 - `expo-camera`: Camera functionality
 - `lucide-react-native`: Icon library
 - `react-native-reanimated`: Animations

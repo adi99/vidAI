@@ -198,7 +198,7 @@ export default function SubscriptionModal({ visible, onClose }: SubscriptionModa
         )}
         
         <LinearGradient
-          colors={getPlanGradient(plan)}
+          colors={getPlanGradient(plan) as [string, string, ...string[]]}
           style={styles.planGradient}
         >
           <View style={styles.planHeader}>

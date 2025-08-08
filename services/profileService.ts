@@ -44,6 +44,7 @@ export interface UserContent {
   thumbnail_url?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   is_public: boolean;
+  is_liked?: boolean;
   likes_count: number;
   comments_count: number;
   shares_count: number;

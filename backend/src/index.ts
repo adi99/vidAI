@@ -1,12 +1,17 @@
+// Load environment variables FIRST before any other imports
 import dotenv from 'dotenv';
+import path from 'path';
+
+const envPath = path.resolve(__dirname, '../.env');
+console.log('Loading .env from:', envPath);
+dotenv.config({ path: envPath });
+
+// Now import other modules after environment variables are loaded
 import app from './app';
 import { logger } from './config/logger';
 import { shutdownQueues } from './config/redis';
 import { workers, closeWorkers } from './queues/workers';
 import { queues } from './queues';
-
-// Load environment variables
-dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 
@@ -19,10 +24,19 @@ const requiredEnvVars = [
   'UPSTASH_REDIS_TOKEN',
 ];
 
+// Debug: Log environment variables
+console.log('Environment variables check:');
+requiredEnvVars.forEach(envVar => {
+  console.log(`${envVar}: ${process.env[envVar] ? 'SET' : 'MISSING'}`);
+});
+
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
   logger.error('Missing required environment variables:', { missingEnvVars });
+  console.error('Current working directory:', process.cwd());
+  console.error('__dirname:', __dirname);
+  console.error('Env file path:', envPath);
   process.exit(1);
 }
 

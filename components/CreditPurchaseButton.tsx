@@ -85,7 +85,7 @@ export default function CreditPurchaseButton({
       <CreditPurchaseModal
         visible={showModal}
         onClose={() => setShowModal(false)}
-        onPurchaseComplete={(credits) => {
+        onPurchaseComplete={(credits: number) => {
           onPurchaseComplete?.(credits);
           setShowModal(false);
         }}

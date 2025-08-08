@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,14 +11,14 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
-import { 
-  X, 
-  Download, 
-  Share2, 
-  Edit3, 
-  RotateCw, 
-  Crop, 
+import { VideoView, useVideoPlayer } from 'expo-video';
+import {
+  X,
+  Download,
+  Share2,
+  Edit3,
+  RotateCw,
+  Crop,
   Palette,
   Play,
   Pause,
@@ -26,7 +26,7 @@ import {
   VolumeX
 } from 'lucide-react-native';
 import { mediaService } from '@/services/mediaService';
-import { cropImage, rotateImage, flipImage, resizeImage } from '@/utils/imageUtils';
+import { rotateImage, flipImage, resizeImage } from '@/utils/imageUtils';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -53,7 +53,29 @@ export function MediaPreview({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showEditMenu, setShowEditMenu] = useState(false);
-  const videoRef = useRef<Video>(null);
+
+  const player = useVideoPlayer(
+    mediaType === 'video' ? { uri: mediaUri } : null,
+    (player) => {
+      if (player) {
+        player.loop = true;
+        player.muted = isMuted;
+      }
+    }
+  );
+
+  // Listen to player status changes
+  useEffect(() => {
+    if (!player) return;
+
+    const subscription = player.addListener('playingChange', (payload) => {
+      setIsPlaying(payload.isPlaying);
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [player]);
 
   const handleDownload = async () => {
     try {
@@ -83,7 +105,7 @@ export function MediaPreview({
 
   const handleRotate = async () => {
     if (mediaType !== 'image') return;
-    
+
     try {
       setIsLoading(true);
       const rotatedUri = await rotateImage(mediaUri, 90);
@@ -100,7 +122,7 @@ export function MediaPreview({
 
   const handleFlip = async (direction: 'horizontal' | 'vertical') => {
     if (mediaType !== 'image') return;
-    
+
     try {
       setIsLoading(true);
       const flippedUri = await flipImage(mediaUri, direction);
@@ -117,7 +139,7 @@ export function MediaPreview({
 
   const handleResize = async () => {
     if (mediaType !== 'image') return;
-    
+
     Alert.alert(
       'Resize Image',
       'Choose a resize option:',
@@ -145,14 +167,14 @@ export function MediaPreview({
     }
   };
 
-  const togglePlayback = async () => {
-    if (mediaType !== 'video' || !videoRef.current) return;
-    
+  const togglePlayback = () => {
+    if (mediaType !== 'video' || !player) return;
+
     try {
       if (isPlaying) {
-        await videoRef.current.pauseAsync();
+        player.pause();
       } else {
-        await videoRef.current.playAsync();
+        player.play();
       }
       setIsPlaying(!isPlaying);
     } catch (error) {
@@ -160,11 +182,11 @@ export function MediaPreview({
     }
   };
 
-  const toggleMute = async () => {
-    if (mediaType !== 'video' || !videoRef.current) return;
-    
+  const toggleMute = () => {
+    if (mediaType !== 'video' || !player) return;
+
     try {
-      await videoRef.current.setIsMutedAsync(!isMuted);
+      player.muted = !isMuted;
       setIsMuted(!isMuted);
     } catch (error) {
       console.error('Error toggling mute:', error);
@@ -186,29 +208,29 @@ export function MediaPreview({
               <X size={24} color="#333" />
             </TouchableOpacity>
           </View>
-          
+
           <ScrollView style={styles.editOptions}>
             <TouchableOpacity style={styles.editOption} onPress={handleRotate}>
               <RotateCw size={20} color="#333" />
               <Text style={styles.editOptionText}>Rotate 90°</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.editOption} 
+
+            <TouchableOpacity
+              style={styles.editOption}
               onPress={() => handleFlip('horizontal')}
             >
               <Crop size={20} color="#333" />
               <Text style={styles.editOptionText}>Flip Horizontal</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.editOption} 
+
+            <TouchableOpacity
+              style={styles.editOption}
               onPress={() => handleFlip('vertical')}
             >
               <Crop size={20} color="#333" />
               <Text style={styles.editOptionText}>Flip Vertical</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={styles.editOption} onPress={handleResize}>
               <Palette size={20} color="#333" />
               <Text style={styles.editOptionText}>Resize</Text>
@@ -232,16 +254,16 @@ export function MediaPreview({
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <X size={24} color="#fff" />
           </TouchableOpacity>
-          
+
           {title && (
             <Text style={styles.title} numberOfLines={1}>
               {title}
             </Text>
           )}
-          
+
           <View style={styles.headerActions}>
             {showEditOptions && mediaType === 'image' && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowEditMenu(true)}
                 style={styles.headerButton}
                 disabled={isLoading}
@@ -249,16 +271,16 @@ export function MediaPreview({
                 <Edit3 size={20} color="#fff" />
               </TouchableOpacity>
             )}
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               onPress={handleShare}
               style={styles.headerButton}
               disabled={isLoading}
             >
               <Share2 size={20} color="#fff" />
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               onPress={handleDownload}
               style={styles.headerButton}
               disabled={isLoading}
@@ -277,22 +299,15 @@ export function MediaPreview({
               resizeMode="contain"
             />
           ) : (
-            <Video
-              ref={videoRef}
-              source={{ uri: mediaUri }}
+            <VideoView
+              player={player}
               style={styles.video}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay={false}
-              isLooping={true}
-              isMuted={isMuted}
-              onPlaybackStatusUpdate={(status) => {
-                if ('isPlaying' in status) {
-                  setIsPlaying(status.isPlaying || false);
-                }
-              }}
+              contentFit="contain"
+              allowsFullscreen
+              allowsPictureInPicture
             />
           )}
-          
+
           {/* Video Controls */}
           {mediaType === 'video' && (
             <View style={styles.videoControls}>
@@ -303,7 +318,7 @@ export function MediaPreview({
                   <Play size={32} color="#fff" />
                 )}
               </TouchableOpacity>
-              
+
               <TouchableOpacity onPress={toggleMute} style={styles.muteButton}>
                 {isMuted ? (
                   <VolumeX size={24} color="#fff" />

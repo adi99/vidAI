@@ -8,17 +8,22 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Animated,
-  RefreshControl,
   Alert,
   ActivityIndicator,
 } from 'react-native';
 import { Heart, MessageCircle, Share, MoveVertical as MoreVertical, Play, Pause, Volume2, VolumeX, Bookmark, User, EggFried as Verified } from 'lucide-react-native';
-import VideoPlayer from '@/components/VideoPlayer';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFeed } from '@/hooks/useFeed';
 import { FeedItem } from '@/services/socialService';
 import { useAuth } from '@/contexts/AuthContext';
 import CommentsModal from '@/components/CommentsModal';
+import * as Haptics from 'expo-haptics';
+
+// Import animation and gesture components for enhanced UX
+import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
+import AnimatedCard from '@/components/ui/AnimatedCard';
+import GestureVideoPlayer from '@/components/ui/GestureVideoPlayer';
+import PullToRefreshFeed from '@/components/ui/PullToRefreshFeed';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -51,9 +56,13 @@ export default function FeedScreen() {
 
   const handleToggleLike = useCallback(async (item: FeedItem) => {
     if (!session?.user) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Login Required', 'Please log in to like content');
       return;
     }
+
+    // Haptic feedback for like action
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     // Animate like action
     Animated.sequence([
@@ -63,7 +72,10 @@ export default function FeedScreen() {
 
     try {
       await toggleLike(item.id, item.content_type);
+      // Success haptic feedback
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', 'Failed to update like. Please try again.');
     }
   }, [session, toggleLike, fadeAnim]);
@@ -120,22 +132,42 @@ export default function FeedScreen() {
     activeColor?: string;
   }) => (
     <Animated.View style={{ opacity: fadeAnim }}>
-      <TouchableOpacity style={styles.actionButton} onPress={onPress}>
+      <AnimatedCard
+        onPress={async () => {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onPress();
+        }}
+        style={styles.actionButton}
+        padding={8}
+        margin={0}
+        hapticFeedback={false} // We handle haptics manually
+        animateOnPress={true}
+        scaleOnPress={0.9}
+      >
         <View style={[styles.actionIconContainer, isActive && { backgroundColor: activeColor + '20' }]}>
           {icon}
         </View>
         <Text style={styles.actionCount}>{formatCount(count)}</Text>
-      </TouchableOpacity>
+      </AnimatedCard>
     </Animated.View>
   );
 
   const renderVideo = ({ item, index }: { item: FeedItem; index: number }) => (
     <View style={styles.videoContainer}>
-      <VideoPlayer
+      <GestureVideoPlayer
         source={{ uri: item.media_url }}
         shouldPlay={index === currentIndex && isPlaying}
         isLooping
+        isMuted={isMuted}
         style={styles.video}
+        showControls={true}
+        autoHideControls={true}
+        controlsTimeout={2000}
+        onPlaybackStatusUpdate={(status) => {
+          if (status.isLoaded) {
+            setIsPlaying(status.isPlaying || false);
+          }
+        }}
       />
 
       {/* Top overlay with model info */}
@@ -162,16 +194,24 @@ export default function FeedScreen() {
       />
 
       {/* Play/Pause overlay */}
-      <TouchableOpacity
+      <AnimatedCard
+        onPress={async () => {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          setIsPlaying(!isPlaying);
+        }}
         style={styles.playPauseOverlay}
-        onPress={() => setIsPlaying(!isPlaying)}
+        padding={0}
+        margin={0}
+        hapticFeedback={false} // We handle haptics manually
+        animateOnPress={true}
+        scaleOnPress={0.95}
       >
         {!isPlaying && (
           <View style={styles.playButton}>
             <Play size={32} color="#FFFFFF" fill="#FFFFFF" />
           </View>
         )}
-      </TouchableOpacity>
+      </AnimatedCard>
 
       {/* Content container */}
       <View style={styles.contentContainer}>
@@ -233,23 +273,42 @@ export default function FeedScreen() {
             onPress={() => handleShare(item)}
           />
 
-          <TouchableOpacity style={styles.actionButton}>
+          <AnimatedCard
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              // Handle more options
+            }}
+            style={styles.actionButton}
+            padding={8}
+            margin={0}
+            hapticFeedback={false} // We handle haptics manually
+            animateOnPress={true}
+            scaleOnPress={0.9}
+          >
             <View style={styles.actionIconContainer}>
               <MoreVertical size={28} color="#FFFFFF" />
             </View>
-          </TouchableOpacity>
+          </AnimatedCard>
 
           {/* Sound toggle */}
-          <TouchableOpacity
+          <AnimatedCard
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsMuted(!isMuted);
+            }}
             style={styles.soundButton}
-            onPress={() => setIsMuted(!isMuted)}
+            padding={8}
+            margin={0}
+            hapticFeedback={false} // We handle haptics manually
+            animateOnPress={true}
+            scaleOnPress={0.9}
           >
             {isMuted ? (
               <VolumeX size={24} color="#FFFFFF" />
             ) : (
               <Volume2 size={24} color="#FFFFFF" />
             )}
-          </TouchableOpacity>
+          </AnimatedCard>
         </View>
       </View>
     </View>
@@ -269,8 +328,7 @@ export default function FeedScreen() {
     if (loading) {
       return (
         <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color="#8B5CF6" />
-          <Text style={styles.emptyText}>Loading feed...</Text>
+          <LoadingSkeleton type="list" count={5} height={SCREEN_HEIGHT} />
         </View>
       );
     }
@@ -280,9 +338,20 @@ export default function FeedScreen() {
         <View style={styles.emptyContainer}>
           <Text style={styles.errorText}>Failed to load feed</Text>
           <Text style={styles.errorSubtext}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refresh}>
+          <AnimatedCard
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              refresh();
+            }}
+            style={styles.retryButton}
+            padding={12}
+            margin={0}
+            hapticFeedback={false} // We handle haptics manually
+            animateOnPress={true}
+            scaleOnPress={0.95}
+          >
             <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+          </AnimatedCard>
         </View>
       );
     }
@@ -297,33 +366,33 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FlatList
-        ref={flatListRef}
-        data={feed}
-        renderItem={renderVideo}
-        keyExtractor={(item) => item.id}
-        pagingEnabled
+      <PullToRefreshFeed
+        onRefresh={refresh}
+        refreshing={refreshing}
         showsVerticalScrollIndicator={false}
-        snapToInterval={SCREEN_HEIGHT}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        onMomentumScrollEnd={(event) => {
-          const index = Math.round(event.nativeEvent.contentOffset.y / SCREEN_HEIGHT);
-          setCurrentIndex(index);
-        }}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.5}
-        ListFooterComponent={renderFooter}
-        ListEmptyComponent={renderEmpty}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refresh}
-            tintColor="#8B5CF6"
-            colors={['#8B5CF6']}
-          />
-        }
-      />
+        style={styles.container}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={feed}
+          renderItem={renderVideo}
+          keyExtractor={(item) => item.id}
+          pagingEnabled
+          showsVerticalScrollIndicator={false}
+          snapToInterval={SCREEN_HEIGHT}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          onMomentumScrollEnd={(event) => {
+            const index = Math.round(event.nativeEvent.contentOffset.y / SCREEN_HEIGHT);
+            setCurrentIndex(index);
+          }}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={renderFooter}
+          ListEmptyComponent={renderEmpty}
+          scrollEnabled={true}
+        />
+      </PullToRefreshFeed>
 
       {/* Comments Modal */}
       {selectedItem && (

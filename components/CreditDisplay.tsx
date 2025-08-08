@@ -92,7 +92,7 @@ export default function CreditDisplay({
       <CreditPurchaseModal
         visible={showPurchaseModal}
         onClose={() => setShowPurchaseModal(false)}
-        onPurchaseComplete={(credits) => {
+        onPurchaseComplete={(credits: number) => {
           console.log(`Successfully purchased ${credits} credits`);
         }}
       />

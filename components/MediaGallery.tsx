@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { Download, Share2, Trash2, Eye } from 'lucide-react-native';
 import { mediaService } from '@/services/mediaService';
 import { formatFileSize, getImageGridSize } from '@/utils/imageUtils';
@@ -106,6 +106,16 @@ export function MediaGallery({
 
   const renderMediaItem = ({ item }: { item: MediaItem }) => {
     const isLoading = loadingItems.has(item.id);
+    
+    const player = useVideoPlayer(
+      item.type === 'video' ? { uri: item.uri } : null,
+      (player) => {
+        if (player) {
+          player.loop = false;
+          player.muted = true;
+        }
+      }
+    );
 
     return (
       <View style={[styles.mediaItem, { width: itemSize, height: itemSize }]}>
@@ -121,13 +131,10 @@ export function MediaGallery({
               resizeMode="cover"
             />
           ) : (
-            <Video
-              source={{ uri: item.uri }}
+            <VideoView
+              player={player}
               style={styles.media}
-              shouldPlay={false}
-              isLooping={false}
-              isMuted={true}
-              resizeMode={ResizeMode.COVER}
+              contentFit="cover"
             />
           )}
           

@@ -18,9 +18,10 @@ import { useAuth } from '@/contexts/AuthContext';
 interface CreditPurchaseModalProps {
   visible: boolean;
   onClose: () => void;
+  onPurchaseComplete?: (credits: number) => void;
 }
 
-export default function CreditPurchaseModal({ visible, onClose }: CreditPurchaseModalProps) {
+export default function CreditPurchaseModal({ visible, onClose, onPurchaseComplete }: CreditPurchaseModalProps) {
   const { credits } = useAuth();
   const {
     packages,
@@ -47,6 +48,7 @@ export default function CreditPurchaseModal({ visible, onClose }: CreditPurchase
     const result = await purchaseCredits(packageId);
     
     if (result.success) {
+      onPurchaseComplete?.(result.credits || 0);
       Alert.alert(
         'Purchase Successful!',
         `You've received ${result.credits} credits!`,
@@ -195,7 +197,7 @@ export default function CreditPurchaseModal({ visible, onClose }: CreditPurchase
                       )}
                       
                       <LinearGradient
-                        colors={getPackageGradient(pkg.id, pkg.popular)}
+                        colors={getPackageGradient(pkg.id, pkg.popular) as [string, string, ...string[]]}
                         style={styles.packageGradient}
                       >
                         <View style={styles.packageHeader}>

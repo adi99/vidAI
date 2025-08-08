@@ -4,20 +4,50 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  TextInput,
   SafeAreaView,
-  Switch,
   Alert,
   Image,
+  TouchableOpacity,
+  TextInput,
+  Switch,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Sparkles, CreditCard as Edit3, ChevronDown, Wand as Wand2, Upload, Palette, Image as ImageIcon, Settings, Download, Share, Heart, Clock } from 'lucide-react-native';
+import { Sparkles, Edit3, Wand as Wand2, Palette, Image as ImageIcon, Download, Share, Heart, Clock, Upload, Settings, ChevronDown } from 'lucide-react-native';
+import { Provider as PaperProvider, DefaultTheme, SegmentedButtons } from 'react-native-paper';
+import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { useImageGeneration } from '@/hooks/useImageGeneration';
 import CreditDisplay from '@/components/CreditDisplay';
 import CreditCostDisplay from '@/components/CreditCostDisplay';
+
+// Import our new interactive components
+import InteractiveSlider from '@/components/ui/InteractiveSlider';
+import DragDropImageUpload from '@/components/ui/DragDropImageUpload';
+import HapticButton from '@/components/ui/HapticButton';
+import AnimatedTextInput from '@/components/ui/AnimatedTextInput';
+import AdvancedSettingsPanel from '@/components/ui/AdvancedSettingsPanel';
+
+// Import animation components for enhanced UX
+import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
+import SmoothProgressBar from '@/components/ui/SmoothProgressBar';
+import GenerationProgress from '@/components/ui/GenerationProgress';
+import StateTransition from '@/components/ui/StateTransition';
+import AnimatedCard from '@/components/ui/AnimatedCard';
+
+// Paper theme configuration
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#8B5CF6',
+    surface: '#1E293B',
+    background: '#0F172A',
+    onSurface: '#FFFFFF',
+    onBackground: '#FFFFFF',
+    outline: '#334155',
+  },
+};
 
 export default function ImageScreen() {
   const { user } = useAuth();
@@ -53,6 +83,7 @@ export default function ImageScreen() {
   const [selectedEditTool, setSelectedEditTool] = useState<'inpaint' | 'outpaint' | 'restyle' | 'background_replace' | null>(null);
   const [editImageData, setEditImageData] = useState<{ uri: string; url?: string } | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   const models = [
     { id: 'sdxl', name: 'SDXL', description: 'High quality, versatile', speed: 'Fast' },
@@ -98,14 +129,19 @@ export default function ImageScreen() {
 
   const handleGenerateImage = async () => {
     if (!prompt.trim()) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Error', 'Please enter a prompt');
       return;
     }
 
     if (generationType === 'image-to-image' && !sourceImage) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Error', 'Please select a source image for image-to-image generation');
       return;
     }
+
+    // Haptic feedback for starting generation
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       let initImageUrl: string | undefined;
@@ -140,6 +176,7 @@ export default function ImageScreen() {
         },
       });
     } catch (error: any) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       console.error('Generation error:', error);
       Alert.alert('Error', error.message || 'Failed to generate image');
     }
@@ -147,19 +184,25 @@ export default function ImageScreen() {
 
   const handleEditImage = async () => {
     if (!editPrompt.trim()) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Error', 'Please describe what you want to edit');
       return;
     }
 
     if (!selectedEditTool) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Error', 'Please select an editing tool');
       return;
     }
 
     if (!editImageData) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Error', 'Please upload an image to edit');
       return;
     }
+
+    // Haptic feedback for starting edit
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       // Upload edit image if needed
@@ -184,6 +227,7 @@ export default function ImageScreen() {
         },
       });
     } catch (error: any) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       console.error('Edit error:', error);
       Alert.alert('Error', error.message || 'Failed to edit image');
     }
@@ -270,12 +314,15 @@ export default function ImageScreen() {
   );
 
   const ModelCard = ({ model }: { model: any }) => (
-    <TouchableOpacity
-      style={[
-        styles.modelCard,
-        selectedModel === model.id && styles.selectedModelCard
-      ]}
-      onPress={() => setSelectedModel(model.id)}
+    <AnimatedCard
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setSelectedModel(model.id);
+      }}
+      selected={selectedModel === model.id}
+      hapticFeedback={false} // We handle haptics manually
+      glowOnSelect={true}
+      style={styles.modelCard}
     >
       <View style={styles.modelHeader}>
         <Text style={styles.modelName}>{model.name}</Text>
@@ -289,45 +336,56 @@ export default function ImageScreen() {
         </View>
       </View>
       <Text style={styles.modelDescription}>{model.description}</Text>
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   const SizeCard = ({ size }: { size: any }) => (
-    <TouchableOpacity
-      style={[
-        styles.sizeCard,
-        selectedSize === size.value && styles.selectedSizeCard
-      ]}
-      onPress={() => setSelectedSize(size.value)}
+    <AnimatedCard
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setSelectedSize(size.value);
+      }}
+      selected={selectedSize === size.value}
+      hapticFeedback={false} // We handle haptics manually
+      glowOnSelect={true}
+      style={styles.sizeCard}
     >
       <Text style={styles.sizeLabel}>{size.label}</Text>
       <Text style={styles.sizeAspect}>{size.aspect}</Text>
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   const QualityCard = ({ quality }: { quality: any }) => (
-    <TouchableOpacity
-      style={[
-        styles.qualityCard,
-        selectedQuality === quality.id && styles.selectedQualityCard
-      ]}
-      onPress={() => setSelectedQuality(quality.id)}
+    <AnimatedCard
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setSelectedQuality(quality.id);
+      }}
+      selected={selectedQuality === quality.id}
+      hapticFeedback={false} // We handle haptics manually
+      glowOnSelect={true}
+      style={styles.qualityCard}
     >
       <Text style={styles.qualityName}>{quality.name}</Text>
       <Text style={styles.qualityDescription}>{quality.description}</Text>
       <View style={styles.creditsContainer}>
         <Text style={styles.creditsText}>{quality.credits} credits</Text>
       </View>
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   const StyleButton = ({ style }: { style: any }) => (
-    <TouchableOpacity
-      style={[
-        styles.styleButton,
-        selectedStyle === style.name && styles.selectedStyleButton
-      ]}
-      onPress={() => setSelectedStyle(style.name)}
+    <AnimatedCard
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setSelectedStyle(style.name);
+      }}
+      selected={selectedStyle === style.name}
+      hapticFeedback={false} // We handle haptics manually
+      glowOnSelect={true}
+      style={styles.styleButton}
+      padding={12}
+      margin={4}
     >
       <Text style={styles.styleEmoji}>{style.emoji}</Text>
       <Text style={[
@@ -336,16 +394,22 @@ export default function ImageScreen() {
       ]}>
         {style.name}
       </Text>
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   const PromptSuggestion = ({ suggestion }: { suggestion: string }) => (
-    <TouchableOpacity
+    <AnimatedCard
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setPrompt(suggestion);
+      }}
       style={styles.suggestionChip}
-      onPress={() => setPrompt(suggestion)}
+      padding={8}
+      margin={4}
+      hapticFeedback={false} // We handle haptics manually
     >
       <Text style={styles.suggestionText}>{suggestion}</Text>
-    </TouchableOpacity>
+    </AnimatedCard>
   );
 
   const renderGenerateTab = () => (
@@ -460,9 +524,13 @@ export default function ImageScreen() {
       <View style={styles.modelSection}>
         <Text style={styles.sectionTitle}>AI Model</Text>
         <View style={styles.modelsGrid}>
-          {models.map((model) => (
-            <ModelCard key={model.name} model={model} />
-          ))}
+          {modelsLoading ? (
+            <LoadingSkeleton type="card" count={4} height={120} />
+          ) : (
+            models.map((model) => (
+              <ModelCard key={model.name} model={model} />
+            ))
+          )}
         </View>
       </View>
 
@@ -554,26 +622,14 @@ export default function ImageScreen() {
         style={{ marginBottom: 24 }}
       />
 
-      {isGenerating && (
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <View style={styles.progressTitleContainer}>
-              <Clock size={20} color="#8B5CF6" />
-              <Text style={styles.progressTitle}>Generating your image...</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => cancelGeneration()}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${generationProgress}%` }]} />
-          </View>
-          <Text style={styles.progressText}>{generationProgress}% complete</Text>
-        </View>
-      )}
+      <GenerationProgress
+        progress={generationProgress}
+        type="image"
+        isActive={isGenerating}
+        onCancel={cancelGeneration}
+        estimatedTime={120} // 2 minutes in seconds
+        showSteps={true}
+      />
 
       <TouchableOpacity
         style={[styles.generateButton, isGenerating && styles.generatingButton]}
@@ -735,26 +791,14 @@ export default function ImageScreen() {
         style={{ marginBottom: 24 }}
       />
 
-      {isEditing && (
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <View style={styles.progressTitleContainer}>
-              <Clock size={20} color="#8B5CF6" />
-              <Text style={styles.progressTitle}>Editing your image...</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => cancelGeneration()}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${editProgress}%` }]} />
-          </View>
-          <Text style={styles.progressText}>{editProgress}% complete</Text>
-        </View>
-      )}
+      <GenerationProgress
+        progress={editProgress}
+        type="edit"
+        isActive={isEditing}
+        onCancel={cancelGeneration}
+        estimatedTime={90} // 1.5 minutes in seconds
+        showSteps={true}
+      />
 
       <TouchableOpacity
         style={[styles.generateButton, isEditing && styles.generatingButton]}
@@ -803,8 +847,9 @@ export default function ImageScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+    <PaperProvider theme={theme}>
+      <SafeAreaView style={styles.container}>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <LinearGradient
           colors={['#EC4899', '#8B5CF6', '#3B82F6']}
           style={styles.header}
@@ -819,23 +864,36 @@ export default function ImageScreen() {
         </LinearGradient>
 
         <View style={styles.tabContainer}>
-          <TabButton
-            tab="generate"
-            icon={<Sparkles size={24} color={activeTab === 'generate' ? '#8B5CF6' : '#6B7280'} />}
-            title="Generate"
-            subtitle="Create from text"
-          />
-          <TabButton
-            tab="edit"
-            icon={<Edit3 size={24} color={activeTab === 'edit' ? '#8B5CF6' : '#6B7280'} />}
-            title="Edit"
-            subtitle="Modify images"
+          <SegmentedButtons
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as 'generate' | 'edit')}
+            buttons={[
+              {
+                value: 'generate',
+                label: 'Generate',
+                icon: ({ size, color }) => <Sparkles size={size} color={color} />,
+              },
+              {
+                value: 'edit',
+                label: 'Edit',
+                icon: ({ size, color }) => <Edit3 size={size} color={color} />,
+              },
+            ]}
+            style={styles.segmentedButtons}
           />
         </View>
 
-        {activeTab === 'generate' ? renderGenerateTab() : renderEditTab()}
-      </ScrollView>
-    </SafeAreaView>
+        <StateTransition 
+          state={activeTab} 
+          type="slide" 
+          direction="up"
+          duration={300}
+        >
+          {activeTab === 'generate' ? renderGenerateTab() : renderEditTab()}
+        </StateTransition>
+        </ScrollView>
+      </SafeAreaView>
+    </PaperProvider>
   );
 }
 
@@ -1526,4 +1584,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  segmentedButtons: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+  },
 });
+

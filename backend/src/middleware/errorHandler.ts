@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { logger } from '../config/logger';
+import { serverErrorTrackingService } from '../services/errorTrackingService';
 
 export interface APIError extends Error {
   statusCode?: number;
@@ -8,7 +9,7 @@ export interface APIError extends Error {
   details?: any;
 }
 
-export const errorHandler = (
+export const errorHandler = async (
   error: APIError | ZodError,
   req: Request,
   res: Response,
@@ -23,6 +24,19 @@ export const errorHandler = (
       method: req.method,
       errors: error.errors 
     });
+
+    // Track validation error
+    await serverErrorTrackingService.reportAPIError(
+      req.path,
+      req.method,
+      400,
+      'Validation error: ' + error.errors.map(e => e.message).join(', '),
+      {
+        userId: (req as any).userId || undefined,
+        userAgent: req.get('User-Agent') || undefined,
+        ip: req.ip || undefined,
+      }
+    );
 
     return res.status(400).json({
       code: 'VALIDATION_ERROR',
@@ -42,6 +56,19 @@ export const errorHandler = (
       message: error.message,
     });
 
+    // Track API error
+    await serverErrorTrackingService.reportAPIError(
+      req.path,
+      req.method,
+      error.statusCode,
+      error.message,
+      {
+        userId: (req as any).userId || undefined,
+        userAgent: req.get('User-Agent') || undefined,
+        ip: req.ip || undefined,
+      }
+    );
+
     return res.status(error.statusCode).json({
       code: error.code || 'API_ERROR',
       message: error.message,
@@ -57,6 +84,20 @@ export const errorHandler = (
     error: error.message,
     stack: error.stack,
   });
+
+  // Track unexpected error as critical
+  await serverErrorTrackingService.reportError(
+    error,
+    {
+      endpoint: req.path,
+      method: req.method,
+      userId: (req as any).userId || undefined,
+      userAgent: req.get('User-Agent') || undefined,
+      ip: req.ip || undefined,
+    },
+    'critical',
+    'system'
+  );
 
   return res.status(500).json({
     code: 'INTERNAL_SERVER_ERROR',
