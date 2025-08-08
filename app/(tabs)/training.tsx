@@ -8,89 +8,78 @@ import {
   SafeAreaView,
   Alert,
   Image,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Upload, Image as ImageIcon, CircleCheck as CheckCircle, Clock, Zap, Star, Crown, Brain, Camera, Trash2, Plus, CircleAlert as AlertCircle, TrendingUp, Shield } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTraining } from '@/hooks/useTraining';
+import { trainingService } from '@/services/trainingService';
 import CreditDisplay from '@/components/CreditDisplay';
 import CreditCostDisplay from '@/components/CreditCostDisplay';
+import TrainingTest from '@/components/TrainingTest';
 
 export default function TrainingScreen() {
-  const { validateCredits } = useAuth();
-  const [uploadedImages, setUploadedImages] = useState<number>(0);
-  const [selectedSteps, setSelectedSteps] = useState<600 | 1200 | 2000>(1200);
-  const [isTraining, setIsTraining] = useState(false);
-  const [trainingProgress, setTrainingProgress] = useState(0);
-  const [selectedTriggerWord, setSelectedTriggerWord] = useState('');
-
-  const handleImageUpload = () => {
-    if (uploadedImages < 30) {
-      setUploadedImages(prev => prev + 1);
-    } else {
-      Alert.alert('Limit Reached', 'Maximum 30 images allowed for optimal training');
-    }
-  };
-
-  const removeImage = () => {
-    if (uploadedImages > 0) {
-      setUploadedImages(prev => prev - 1);
-    }
-  };
-
-  const startTraining = async () => {
-    if (uploadedImages < 10) {
-      Alert.alert('Insufficient Images', 'Please upload at least 10 high-quality images for effective training');
-      return;
-    }
-
-    // Validate credits before training
-    const validation = await validateCredits('training', { steps: selectedSteps });
-    if (!validation.valid) {
-      Alert.alert('Insufficient Credits', validation.message || 'Not enough credits for this training');
-      return;
-    }
+  const {
+    // Image management
+    uploadedImages,
+    addImages,
+    removeImage,
+    clearImages,
     
-    setIsTraining(true);
-    setTrainingProgress(0);
+    // Training configuration
+    selectedSteps,
+    setSelectedSteps,
+    modelName,
+    setModelName,
     
-    // Simulate training process
-    const interval = setInterval(() => {
-      setTrainingProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsTraining(false);
-          Alert.alert('Training Complete', 'Your custom LoRA model is ready to use!');
-          return 100;
-        }
-        return prev + 2;
-      });
-    }, 200);
+    // Training execution
+    startTraining,
+    isTraining,
+    trainingProgress,
+    currentTrainingJob,
+    
+    // Models management
+    trainedModels,
+    loadTrainedModels,
+    
+    // Status
+    isLoading,
+    error,
+    
+    // Validation
+    canStartTraining,
+    getCreditCost,
+  } = useTraining();
+
+  const getStepCost = (steps: 600 | 1200 | 2000) => {
+    return trainingService.getCreditCost(steps);
   };
 
   const trainingSteps = [
     {
-      steps: 600,
+      steps: 600 as const,
       duration: '~15 min',
       quality: 'Good Quality',
-      price: '$2.99',
+      price: `${getStepCost(600)} credits`,
       icon: <Clock size={24} color="#FFFFFF" />,
       description: 'Quick training for basic personalization',
       recommended: false,
     },
     {
-      steps: 1200,
+      steps: 1200 as const,
       duration: '~30 min',
       quality: 'High Quality',
-      price: '$4.99',
+      price: `${getStepCost(1200)} credits`,
       icon: <Zap size={24} color="#FFFFFF" />,
       description: 'Balanced training for excellent results',
       recommended: true,
     },
     {
-      steps: 2000,
+      steps: 2000 as const,
       duration: '~50 min',
       quality: 'Premium Quality',
-      price: '$7.99',
+      price: `${getStepCost(2000)} credits`,
       icon: <Crown size={24} color="#FFFFFF" />,
       description: 'Maximum quality for professional use',
       recommended: false,
@@ -138,28 +127,34 @@ export default function TrainingScreen() {
     </TouchableOpacity>
   );
 
-  const ImageSlot = ({ index }: { index: number }) => (
-    <TouchableOpacity
-      style={[
-        styles.imageSlot,
-        index < uploadedImages ? styles.filledImageSlot : styles.emptyImageSlot
-      ]}
-      onPress={index < uploadedImages ? removeImage : handleImageUpload}
-    >
-      {index < uploadedImages ? (
-        <>
-          <View style={styles.imagePreview}>
-            <ImageIcon size={20} color="#8B5CF6" />
-          </View>
-          <TouchableOpacity style={styles.removeButton} onPress={removeImage}>
-            <Trash2 size={12} color="#FFFFFF" />
-          </TouchableOpacity>
-        </>
-      ) : (
-        <Plus size={20} color="#6B7280" />
-      )}
-    </TouchableOpacity>
-  );
+  const ImageSlot = ({ index }: { index: number }) => {
+    const hasImage = index < uploadedImages.length;
+    const image = hasImage ? uploadedImages[index] : null;
+    
+    return (
+      <TouchableOpacity
+        style={[
+          styles.imageSlot,
+          hasImage ? styles.filledImageSlot : styles.emptyImageSlot
+        ]}
+        onPress={hasImage ? () => removeImage(index) : addImages}
+      >
+        {hasImage && image ? (
+          <>
+            <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+            <TouchableOpacity 
+              style={styles.removeButton} 
+              onPress={() => removeImage(index)}
+            >
+              <Trash2 size={12} color="#FFFFFF" />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <Plus size={20} color="#6B7280" />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -188,11 +183,38 @@ export default function TrainingScreen() {
         </LinearGradient>
 
         <View style={styles.content}>
+          {/* Development Test Component */}
+          {__DEV__ && <TrainingTest />}
+          
+          {/* Model Name Input */}
+          <View style={styles.modelNameSection}>
+            <Text style={styles.sectionTitle}>Model Name</Text>
+            <Text style={styles.sectionSubtitle}>
+              Choose a unique name for your custom model
+            </Text>
+            <TextInput
+              style={[
+                styles.modelNameInput,
+                modelName.trim().length > 0 && !/^[a-zA-Z0-9-_]+$/.test(modelName.trim()) && styles.modelNameInputError
+              ]}
+              value={modelName}
+              onChangeText={setModelName}
+              placeholder="Enter model name (e.g., my-portrait-model)"
+              placeholderTextColor="#6B7280"
+              maxLength={50}
+            />
+            {modelName.trim().length > 0 && !/^[a-zA-Z0-9-_]+$/.test(modelName.trim()) && (
+              <Text style={styles.validationText}>
+                Model name can only contain letters, numbers, hyphens, and underscores
+              </Text>
+            )}
+          </View>
+
           <View style={styles.uploadSection}>
             <View style={styles.uploadHeader}>
               <Text style={styles.sectionTitle}>Training Images</Text>
               <View style={styles.uploadCounter}>
-                <Text style={styles.counterText}>{uploadedImages}/30</Text>
+                <Text style={styles.counterText}>{uploadedImages.length}/30</Text>
               </View>
             </View>
             <Text style={styles.sectionSubtitle}>
@@ -207,30 +229,42 @@ export default function TrainingScreen() {
 
             <TouchableOpacity
               style={styles.uploadButton}
-              onPress={handleImageUpload}
+              onPress={addImages}
+              disabled={isLoading}
             >
               <LinearGradient
                 colors={['#8B5CF6', '#3B82F6']}
                 style={styles.uploadGradient}
               >
                 <Upload size={24} color="#FFFFFF" />
-                <Text style={styles.uploadButtonText}>Add More Images</Text>
+                <Text style={styles.uploadButtonText}>
+                  {isLoading ? 'Processing...' : 'Add Images (Multiple Selection)'}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
+
+            {uploadedImages.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearButton}
+                onPress={clearImages}
+              >
+                <Text style={styles.clearButtonText}>Clear All Images</Text>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
                 <View 
                   style={[
                     styles.progressFill, 
-                    { width: `${Math.min((uploadedImages / 10) * 100, 100)}%` }
+                    { width: `${Math.min((uploadedImages.length / 10) * 100, 100)}%` }
                   ]} 
                 />
               </View>
               <Text style={styles.progressText}>
-                {uploadedImages >= 10 
-                  ? `Ready to train! ${uploadedImages} images uploaded` 
-                  : `${Math.max(10 - uploadedImages, 0)} more images needed to start training`
+                {uploadedImages.length >= 10 
+                  ? `Ready to train! ${uploadedImages.length} images uploaded` 
+                  : `${Math.max(10 - uploadedImages.length, 0)} more images needed to start training`
                 }
               </Text>
             </View>
@@ -296,6 +330,15 @@ export default function TrainingScreen() {
             </View>
           </View>
 
+          {/* Error Display */}
+          {error && (
+            <View style={styles.errorSection}>
+              <AlertCircle size={20} color="#EF4444" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
+          {/* Training Progress */}
           {isTraining && (
             <View style={styles.trainingProgressSection}>
               <View style={styles.trainingHeader}>
@@ -305,10 +348,57 @@ export default function TrainingScreen() {
               <View style={styles.trainingProgressBar}>
                 <View style={[styles.trainingProgressFill, { width: `${trainingProgress}%` }]} />
               </View>
-              <Text style={styles.trainingProgressText}>{trainingProgress}% complete</Text>
+              <View style={styles.progressInfo}>
+                <Text style={styles.trainingProgressText}>{trainingProgress}% complete</Text>
+                {trainingProgress > 0 && (
+                  <Text style={styles.estimatedTime}>
+                    ~{Math.ceil((100 - trainingProgress) * (selectedSteps / 100) / 60)} min remaining
+                  </Text>
+                )}
+              </View>
               <Text style={styles.trainingSubtext}>
-                Training your custom model with {uploadedImages} images using {selectedSteps} steps
+                Training your custom model "{modelName}" with {uploadedImages.length} images using {selectedSteps} steps
               </Text>
+              {currentTrainingJob && (
+                <Text style={styles.jobIdText}>
+                  Job ID: {currentTrainingJob.id}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Trained Models Section */}
+          {trainedModels.length > 0 && (
+            <View style={styles.modelsSection}>
+              <View style={styles.modelsHeader}>
+                <Text style={styles.sectionTitle}>Your Trained Models</Text>
+                <TouchableOpacity onPress={loadTrainedModels}>
+                  <Text style={styles.refreshText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.modelsContainer}>
+                  {trainedModels.slice(0, 5).map((model) => (
+                    <View key={model.id} style={styles.modelCard}>
+                      <View style={[
+                        styles.modelStatus,
+                        { backgroundColor: 
+                          model.status === 'completed' ? '#10B981' :
+                          model.status === 'processing' ? '#F59E0B' :
+                          model.status === 'failed' ? '#EF4444' : '#6B7280'
+                        }
+                      ]}>
+                        <Text style={styles.modelStatusText}>
+                          {model.status.toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.modelName}>{model.modelName}</Text>
+                      <Text style={styles.modelSteps}>{model.steps} steps</Text>
+                      <Text style={styles.modelCredits}>{model.creditsUsed} credits</Text>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
           )}
 
@@ -321,17 +411,17 @@ export default function TrainingScreen() {
           <TouchableOpacity
             style={[
               styles.trainButton,
-              uploadedImages < 10 && styles.disabledTrainButton,
-              isTraining && styles.trainingButton
+              !canStartTraining && styles.disabledTrainButton,
+              (isTraining || isLoading) && styles.trainingButton
             ]}
             onPress={startTraining}
-            disabled={uploadedImages < 10 || isTraining}
+            disabled={!canStartTraining || isTraining || isLoading}
           >
             <LinearGradient
               colors={
-                uploadedImages < 10 
+                !canStartTraining 
                   ? ['#6B7280', '#6B7280']
-                  : isTraining 
+                  : (isTraining || isLoading)
                   ? ['#F59E0B', '#F59E0B'] 
                   : ['#F59E0B', '#EF4444']
               }
@@ -341,6 +431,11 @@ export default function TrainingScreen() {
                 <>
                   <Clock size={24} color="#FFFFFF" />
                   <Text style={styles.trainButtonText}>Training Model...</Text>
+                </>
+              ) : isLoading ? (
+                <>
+                  <Clock size={24} color="#FFFFFF" />
+                  <Text style={styles.trainButtonText}>Starting...</Text>
                 </>
               ) : (
                 <>
@@ -405,6 +500,27 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+  },
+  modelNameSection: {
+    marginBottom: 32,
+  },
+  modelNameInput: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 16,
+    color: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#334155',
+  },
+  modelNameInputError: {
+    borderColor: '#EF4444',
+  },
+  validationText: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 8,
+    marginLeft: 4,
   },
   uploadSection: {
     marginBottom: 32,
@@ -495,6 +611,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  clearButton: {
+    alignItems: 'center',
+    padding: 12,
+    marginBottom: 16,
+  },
+  clearButtonText: {
+    fontSize: 14,
+    color: '#EF4444',
+    fontWeight: '600',
   },
   progressContainer: {
     gap: 8,
@@ -701,17 +827,106 @@ const styles = StyleSheet.create({
     backgroundColor: '#F59E0B',
     borderRadius: 4,
   },
+  progressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   trainingProgressText: {
     fontSize: 14,
     color: '#FFFFFF',
-    textAlign: 'center',
     fontWeight: '600',
+  },
+  estimatedTime: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '500',
   },
   trainingSubtext: {
     fontSize: 12,
     color: '#94A3B8',
     textAlign: 'center',
     marginTop: 4,
+  },
+  jobIdText: {
+    fontSize: 10,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 4,
+    fontFamily: 'monospace',
+  },
+  errorSection: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#EF4444',
+    flex: 1,
+    lineHeight: 18,
+  },
+  modelsSection: {
+    marginBottom: 32,
+  },
+  modelsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  refreshText: {
+    fontSize: 14,
+    color: '#F59E0B',
+    fontWeight: '600',
+  },
+  modelsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modelCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    width: 140,
+    position: 'relative',
+  },
+  modelStatus: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  modelStatusText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modelName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+    marginTop: 8,
+  },
+  modelSteps: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 2,
+  },
+  modelCredits: {
+    fontSize: 12,
+    color: '#F59E0B',
+    fontWeight: '600',
   },
   trainButton: {
     borderRadius: 20,

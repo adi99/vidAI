@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,111 +8,93 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Animated,
+  RefreshControl,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Heart, MessageCircle, Share, MoveVertical as MoreVertical, Play, Pause, Volume2, VolumeX, Bookmark, User, EggFried as Verified } from 'lucide-react-native';
 import VideoPlayer from '@/components/VideoPlayer';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFeed } from '@/hooks/useFeed';
+import { FeedItem } from '@/services/socialService';
+import { useAuth } from '@/contexts/AuthContext';
+import CommentsModal from '@/components/CommentsModal';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const mockVideos = [
-  {
-    id: '1',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    title: 'Futuristic Cyberpunk City',
-    description: 'A breathtaking AI-generated cyberpunk cityscape with neon lights, flying cars, and towering skyscrapers in the rain',
-    author: '@ai_visionary',
-    authorVerified: true,
-    avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-    likes: 125000,
-    comments: 3240,
-    shares: 890,
-    bookmarks: 1200,
-    isLiked: false,
-    isBookmarked: false,
-    duration: '0:15',
-    model: 'RunwayML Gen-3',
-    prompt: 'cyberpunk city at night, neon lights, flying cars, rain, cinematic',
-  },
-  {
-    id: '2',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    title: 'Mystical Ocean Waves',
-    description: 'Peaceful golden hour ocean scene with magical particles floating above the waves, created with advanced AI',
-    author: '@ocean_dreams',
-    authorVerified: false,
-    avatar: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-    likes: 89000,
-    comments: 1560,
-    shares: 450,
-    bookmarks: 780,
-    isLiked: true,
-    isBookmarked: true,
-    duration: '0:12',
-    model: 'Pika Labs',
-    prompt: 'golden hour ocean waves, magical particles, peaceful, cinematic lighting',
-  },
-  {
-    id: '3',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    title: 'Enchanted Forest Portal',
-    description: 'A magical portal opening in an ancient forest with glowing particles and ethereal light beams',
-    author: '@fantasy_realm',
-    authorVerified: true,
-    avatar: 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-    likes: 157000,
-    comments: 4320,
-    shares: 1230,
-    bookmarks: 2100,
-    isLiked: false,
-    isBookmarked: false,
-    duration: '0:18',
-    model: 'Stable Video Diffusion',
-    prompt: 'magical forest portal, glowing particles, ethereal light, fantasy',
-  },
-];
-
 export default function FeedScreen() {
-  const [videos, setVideos] = useState(mockVideos);
+  const { session } = useAuth();
+  const {
+    feed,
+    loading,
+    error,
+    hasMore,
+    refreshing,
+    loadMore,
+    refresh,
+    toggleLike,
+    addComment,
+    shareContent
+  } = useFeed({
+    content_type: 'all',
+    sort: 'recent',
+    limit: 10
+  });
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  const toggleLike = (videoId: string) => {
-    setVideos(prev =>
-      prev.map(video =>
-        video.id === videoId
-          ? {
-              ...video,
-              isLiked: !video.isLiked,
-              likes: video.isLiked ? video.likes - 1 : video.likes + 1,
-            }
-          : video
-      )
-    );
-    
+  const handleToggleLike = useCallback(async (item: FeedItem) => {
+    if (!session?.user) {
+      Alert.alert('Login Required', 'Please log in to like content');
+      return;
+    }
+
     // Animate like action
     Animated.sequence([
       Animated.timing(fadeAnim, { duration: 100, toValue: 0.7, useNativeDriver: true }),
       Animated.timing(fadeAnim, { duration: 100, toValue: 1, useNativeDriver: true }),
     ]).start();
-  };
 
-  const toggleBookmark = (videoId: string) => {
-    setVideos(prev =>
-      prev.map(video =>
-        video.id === videoId
-          ? {
-              ...video,
-              isBookmarked: !video.isBookmarked,
-              bookmarks: video.isBookmarked ? video.bookmarks - 1 : video.bookmarks + 1,
-            }
-          : video
-      )
-    );
-  };
+    try {
+      await toggleLike(item.id, item.content_type);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update like. Please try again.');
+    }
+  }, [session, toggleLike, fadeAnim]);
+
+  const handleShare = useCallback(async (item: FeedItem) => {
+    try {
+      const shareUrl = await shareContent(item.id, item.content_type, 'copy_link');
+      Alert.alert('Share', `Link copied: ${shareUrl}`);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to share content. Please try again.');
+    }
+  }, [shareContent]);
+
+  const handleComment = useCallback((item: FeedItem) => {
+    setSelectedItem(item);
+    setCommentsModalVisible(true);
+  }, []);
+
+  const handleCommentAdded = useCallback(() => {
+    // Refresh the feed to get updated comment counts
+    // In a real app, you might want to update the specific item's comment count
+    if (selectedItem) {
+      // Update the comment count for the specific item
+      // This is handled by the useFeed hook's addComment method
+    }
+  }, [selectedItem]);
+
+  const handleBookmark = useCallback((item: FeedItem) => {
+    // Bookmarks aren't implemented in the backend yet
+    Alert.alert('Bookmarks', 'Bookmark feature coming soon!');
+  }, []);
 
   const formatCount = (count: number) => {
     if (count >= 1000000) {
@@ -124,12 +106,12 @@ export default function FeedScreen() {
     return count.toString();
   };
 
-  const ActionButton = ({ 
-    icon, 
-    count, 
-    onPress, 
+  const ActionButton = ({
+    icon,
+    count,
+    onPress,
     isActive = false,
-    activeColor = '#EF4444' 
+    activeColor = '#EF4444'
   }: {
     icon: React.ReactNode;
     count: number;
@@ -147,34 +129,38 @@ export default function FeedScreen() {
     </Animated.View>
   );
 
-  const renderVideo = ({ item, index }: { item: any; index: number }) => (
+  const renderVideo = ({ item, index }: { item: FeedItem; index: number }) => (
     <View style={styles.videoContainer}>
       <VideoPlayer
-        source={{ uri: item.url }}
+        source={{ uri: item.media_url }}
         shouldPlay={index === currentIndex && isPlaying}
         isLooping
         style={styles.video}
       />
-      
+
       {/* Top overlay with model info */}
       <LinearGradient
         colors={['rgba(0,0,0,0.6)', 'transparent']}
         style={styles.topOverlay}
       >
-        <View style={styles.modelBadge}>
-          <Text style={styles.modelText}>{item.model}</Text>
-        </View>
-        <View style={styles.durationBadge}>
-          <Text style={styles.durationText}>{item.duration}</Text>
-        </View>
+        {item.model && (
+          <View style={styles.modelBadge}>
+            <Text style={styles.modelText}>{item.model}</Text>
+          </View>
+        )}
+        {item.duration && (
+          <View style={styles.durationBadge}>
+            <Text style={styles.durationText}>{item.duration}</Text>
+          </View>
+        )}
       </LinearGradient>
-      
+
       {/* Bottom overlay with content */}
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.8)']}
         style={styles.bottomOverlay}
       />
-      
+
       {/* Play/Pause overlay */}
       <TouchableOpacity
         style={styles.playPauseOverlay}
@@ -186,7 +172,7 @@ export default function FeedScreen() {
           </View>
         )}
       </TouchableOpacity>
-      
+
       {/* Content container */}
       <View style={styles.contentContainer}>
         <View style={styles.leftContent}>
@@ -194,72 +180,67 @@ export default function FeedScreen() {
             <View style={styles.authorAvatar}>
               <User size={16} color="#FFFFFF" />
             </View>
-            <Text style={styles.author}>{item.author}</Text>
-            {item.authorVerified && (
-              <Verified size={16} color="#3B82F6" fill="#3B82F6" />
-            )}
+            <Text style={styles.author}>@{item.username}</Text>
+            {/* Note: authorVerified would need to be added to the backend data */}
           </View>
-          <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.description} numberOfLines={2}>
-            {item.description}
-          </Text>
+          <Text style={styles.title}>AI Generated {item.content_type === 'video' ? 'Video' : 'Image'}</Text>
           <View style={styles.promptContainer}>
             <Text style={styles.promptLabel}>Prompt:</Text>
-            <Text style={styles.promptText} numberOfLines={1}>
+            <Text style={styles.promptText} numberOfLines={2}>
               "{item.prompt}"
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.rightActions}>
           <ActionButton
             icon={
               <Heart
                 size={28}
-                color={item.isLiked ? '#EF4444' : '#FFFFFF'}
-                fill={item.isLiked ? '#EF4444' : 'transparent'}
+                color={item.is_liked ? '#EF4444' : '#FFFFFF'}
+                fill={item.is_liked ? '#EF4444' : 'transparent'}
               />
             }
-            count={item.likes}
-            onPress={() => toggleLike(item.id)}
-            isActive={item.isLiked}
+            count={item.likes_count}
+            onPress={() => handleToggleLike(item)}
+            isActive={item.is_liked}
             activeColor="#EF4444"
           />
-          
+
           <ActionButton
             icon={<MessageCircle size={28} color="#FFFFFF" />}
-            count={item.comments}
-            onPress={() => {}}
+            count={item.comments_count}
+            onPress={() => handleComment(item)}
           />
-          
+
           <ActionButton
             icon={
               <Bookmark
                 size={28}
-                color={item.isBookmarked ? '#F59E0B' : '#FFFFFF'}
-                fill={item.isBookmarked ? '#F59E0B' : 'transparent'}
+                color={item.is_bookmarked ? '#F59E0B' : '#FFFFFF'}
+                fill={item.is_bookmarked ? '#F59E0B' : 'transparent'}
               />
             }
-            count={item.bookmarks}
-            onPress={() => toggleBookmark(item.id)}
-            isActive={item.isBookmarked}
+            count={0} // Bookmarks not implemented yet
+            onPress={() => handleBookmark(item)}
+            isActive={item.is_bookmarked}
             activeColor="#F59E0B"
           />
-          
+
           <ActionButton
             icon={<Share size={28} color="#FFFFFF" />}
-            count={item.shares}
-            onPress={() => {}}
+            count={item.shares_count}
+            onPress={() => handleShare(item)}
           />
-          
+
           <TouchableOpacity style={styles.actionButton}>
             <View style={styles.actionIconContainer}>
               <MoreVertical size={28} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
-          
+
           {/* Sound toggle */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.soundButton}
             onPress={() => setIsMuted(!isMuted)}
           >
@@ -274,11 +255,51 @@ export default function FeedScreen() {
     </View>
   );
 
+  const renderFooter = () => {
+    if (!hasMore) return null;
+    return (
+      <View style={styles.loadingFooter}>
+        <ActivityIndicator size="large" color="#8B5CF6" />
+        <Text style={styles.loadingText}>Loading more content...</Text>
+      </View>
+    );
+  };
+
+  const renderEmpty = () => {
+    if (loading) {
+      return (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.emptyText}>Loading feed...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.errorText}>Failed to load feed</Text>
+          <Text style={styles.errorSubtext}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refresh}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>No content available</Text>
+        <Text style={styles.emptySubtext}>Check back later for new AI-generated content!</Text>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
         ref={flatListRef}
-        data={videos}
+        data={feed}
         renderItem={renderVideo}
         keyExtractor={(item) => item.id}
         pagingEnabled
@@ -290,7 +311,33 @@ export default function FeedScreen() {
           const index = Math.round(event.nativeEvent.contentOffset.y / SCREEN_HEIGHT);
           setCurrentIndex(index);
         }}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor="#8B5CF6"
+            colors={['#8B5CF6']}
+          />
+        }
       />
+
+      {/* Comments Modal */}
+      {selectedItem && (
+        <CommentsModal
+          visible={commentsModalVisible}
+          onClose={() => {
+            setCommentsModalVisible(false);
+            setSelectedItem(null);
+          }}
+          contentId={selectedItem.id}
+          contentType={selectedItem.content_type}
+          onCommentAdded={handleCommentAdded}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -459,5 +506,61 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 20,
+  },
+  loadingFooter: {
+    height: SCREEN_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+  },
+  loadingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginTop: 16,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    height: SCREEN_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+    paddingHorizontal: 40,
+  },
+  emptyText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    color: '#9CA3AF',
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  errorSubtext: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

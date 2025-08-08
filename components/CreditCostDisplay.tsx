@@ -11,6 +11,7 @@ interface CreditCostDisplayProps {
     steps?: 600 | 1200 | 2000;
     editType?: 'basic' | 'advanced';
     quantity?: number;
+    model?: string;
   };
   showValidation?: boolean;
   style?: any;

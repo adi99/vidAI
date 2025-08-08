@@ -49,9 +49,9 @@ export class CreditService {
       '15s': 25,
     },
     training: {
-      600: 50,
-      1200: 100,
-      2000: 200,
+      600: 10,
+      1200: 20,
+      2000: 35,
     },
     editing: {
       basic: 2,

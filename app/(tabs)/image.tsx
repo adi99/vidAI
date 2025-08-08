@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,41 +9,56 @@ import {
   SafeAreaView,
   Switch,
   Alert,
-  Animated,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Sparkles, CreditCard as Edit3, ChevronDown, Wand as Wand2, Upload, Palette, Image as ImageIcon, Zap, Crown, Settings, Copy, Download, Share, Heart, Eye, Clock } from 'lucide-react-native';
+import { Sparkles, CreditCard as Edit3, ChevronDown, Wand as Wand2, Upload, Palette, Image as ImageIcon, Settings, Download, Share, Heart, Clock } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useImagePicker } from '@/hooks/useImagePicker';
+import { useImageGeneration } from '@/hooks/useImageGeneration';
 import CreditDisplay from '@/components/CreditDisplay';
 import CreditCostDisplay from '@/components/CreditCostDisplay';
 
 export default function ImageScreen() {
-  const { credits, isSubscribed, validateCredits, getCreditCost } = useAuth();
+  const { user } = useAuth();
+  const { pickImage, takePhoto } = useImagePicker();
+  const {
+    isGenerating,
+    isEditing,
+    generationProgress,
+    editProgress,
+    generatedImages,
+    generateImage,
+    editImage,
+    enhancePrompt,
+    uploadImage,
+    cancelGeneration,
+    clearError,
+  } = useImageGeneration();
+
   const [activeTab, setActiveTab] = useState<'generate' | 'edit'>('generate');
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
-  const [selectedModel, setSelectedModel] = useState('SDXL');
+  const [selectedModel, setSelectedModel] = useState('sdxl');
   const [selectedSize, setSelectedSize] = useState('1024x1024');
-  const [selectedQuality, setSelectedQuality] = useState('Standard');
+  const [selectedQuality, setSelectedQuality] = useState<'basic' | 'standard' | 'high'>('standard');
   const [promptEnhancement, setPromptEnhancement] = useState(true);
   const [selectedStyle, setSelectedStyle] = useState('Realistic');
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [steps, setSteps] = useState(30);
   const [seed, setSeed] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
   const [generationType, setGenerationType] = useState<'text-to-image' | 'image-to-image'>('text-to-image');
-  const [sourceImage, setSourceImage] = useState<string | null>(null);
+  const [sourceImage, setSourceImage] = useState<{ uri: string; url?: string } | null>(null);
   const [editPrompt, setEditPrompt] = useState('');
-  const [selectedEditTool, setSelectedEditTool] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editProgress, setEditProgress] = useState(0);
+  const [selectedEditTool, setSelectedEditTool] = useState<'inpaint' | 'outpaint' | 'restyle' | 'background_replace' | null>(null);
+  const [editImageData, setEditImageData] = useState<{ uri: string; url?: string } | null>(null);
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   const models = [
-    { name: 'SDXL', description: 'High quality, versatile', speed: 'Fast' },
-    { name: 'FLUX', description: 'Ultra realistic results', speed: 'Medium' },
-    { name: 'Midjourney', description: 'Artistic and creative', speed: 'Slow' },
-    { name: 'DALL-E 3', description: 'Best text understanding', speed: 'Fast' }
+    { id: 'sdxl', name: 'SDXL', description: 'High quality, versatile', speed: 'Fast' },
+    { id: 'flux', name: 'FLUX', description: 'Ultra realistic results', speed: 'Medium' },
+    { id: 'midjourney', name: 'Midjourney', description: 'Artistic and creative', speed: 'Slow' },
+    { id: 'dalle3', name: 'DALL-E 3', description: 'Best text understanding', speed: 'Fast' }
   ];
 
   const sizes = [
@@ -56,9 +71,9 @@ export default function ImageScreen() {
   ];
 
   const qualities = [
-    { name: 'Basic', description: 'Fast generation', credits: 1 },
-    { name: 'Standard', description: 'Balanced quality', credits: 2 },
-    { name: 'High', description: 'Best quality', credits: 4 }
+    { id: 'basic', name: 'Basic', description: 'Fast generation', credits: 1 },
+    { id: 'standard', name: 'Standard', description: 'Balanced quality', credits: 2 },
+    { id: 'high', name: 'High', description: 'Best quality', credits: 4 }
   ];
 
   const visualStyles = [
@@ -81,7 +96,7 @@ export default function ImageScreen() {
     'Abstract geometric patterns in vibrant colors'
   ];
 
-  const generateImage = async () => {
+  const handleGenerateImage = async () => {
     if (!prompt.trim()) {
       Alert.alert('Error', 'Please enter a prompt');
       return;
@@ -92,34 +107,45 @@ export default function ImageScreen() {
       return;
     }
 
-    // Validate credits before generation
-    const validation = await validateCredits('image', {
-      quality: selectedQuality.toLowerCase(),
-    });
+    try {
+      let initImageUrl: string | undefined;
 
-    if (!validation.valid) {
-      Alert.alert('Insufficient Credits', validation.message || 'Not enough credits for this generation');
-      return;
-    }
-
-    setIsGenerating(true);
-    setGenerationProgress(0);
-
-    // Simulate generation progress
-    const interval = setInterval(() => {
-      setGenerationProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsGenerating(false);
-          Alert.alert('Success', 'Your image has been generated!');
-          return 100;
+      // Upload source image if needed
+      if (generationType === 'image-to-image' && sourceImage) {
+        if (!sourceImage.url) {
+          initImageUrl = await uploadImage(sourceImage.uri);
+        } else {
+          initImageUrl = sourceImage.url;
         }
-        return prev + 10;
+      }
+
+      // Parse size
+      const [width, height] = selectedSize.split('x').map(Number);
+
+      // Generate image
+      await generateImage({
+        prompt: promptEnhancement ? await enhancePromptText(prompt) : prompt,
+        negative_prompt: negativePrompt || undefined,
+        model: selectedModel,
+        quality: selectedQuality,
+        width,
+        height,
+        init_image_url: initImageUrl,
+        strength: generationType === 'image-to-image' ? 0.8 : undefined,
+        metadata: {
+          style: selectedStyle,
+          guidance_scale: guidanceScale,
+          steps,
+          seed: seed || undefined,
+        },
       });
-    }, 300);
+    } catch (error: any) {
+      console.error('Generation error:', error);
+      Alert.alert('Error', error.message || 'Failed to generate image');
+    }
   };
 
-  const editImage = async () => {
+  const handleEditImage = async () => {
     if (!editPrompt.trim()) {
       Alert.alert('Error', 'Please describe what you want to edit');
       return;
@@ -130,44 +156,96 @@ export default function ImageScreen() {
       return;
     }
 
-    // Validate credits before editing
-    const editType = selectedEditTool === 'change-outfit' || selectedEditTool === 'restyle-region' ? 'advanced' : 'basic';
-    const validation = await validateCredits('editing', { editType });
-
-    if (!validation.valid) {
-      Alert.alert('Insufficient Credits', validation.message || 'Not enough credits for this edit');
+    if (!editImageData) {
+      Alert.alert('Error', 'Please upload an image to edit');
       return;
     }
 
-    setIsEditing(true);
-    setEditProgress(0);
+    try {
+      // Upload edit image if needed
+      let imageUrl: string;
+      if (!editImageData.url) {
+        imageUrl = await uploadImage(editImageData.uri);
+      } else {
+        imageUrl = editImageData.url;
+      }
 
-    // Simulate editing progress
-    const interval = setInterval(() => {
-      setEditProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsEditing(false);
-          Alert.alert('Success', 'Your image has been edited!');
-          return 100;
-        }
-        return prev + 10;
+      // Edit image
+      await editImage({
+        image_url: imageUrl,
+        prompt: editPrompt,
+        negative_prompt: negativePrompt || undefined,
+        edit_type: selectedEditTool,
+        strength: 0.8,
+        guidance_scale: guidanceScale,
+        steps,
+        metadata: {
+          tool: selectedEditTool,
+        },
       });
-    }, 300);
+    } catch (error: any) {
+      console.error('Edit error:', error);
+      Alert.alert('Error', error.message || 'Failed to edit image');
+    }
   };
 
-  const selectSourceImage = () => {
-    // Simulate image selection
-    Alert.alert('Image Selected', 'Source image has been selected for image-to-image generation');
-    setSourceImage('selected-image.jpg');
+  const selectSourceImage = async () => {
+    try {
+      const result = await pickImage({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result) {
+        setSourceImage({ uri: result.uri });
+        Alert.alert('Success', 'Source image selected for image-to-image generation');
+      }
+    } catch (error) {
+      console.error('Error selecting source image:', error);
+      Alert.alert('Error', 'Failed to select image');
+    }
   };
 
-  const TabButton = ({ 
-    tab, 
-    icon, 
+  const selectEditImage = async () => {
+    try {
+      const result = await pickImage({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result) {
+        setEditImageData({ uri: result.uri });
+        Alert.alert('Success', 'Image selected for editing');
+      }
+    } catch (error) {
+      console.error('Error selecting edit image:', error);
+      Alert.alert('Error', 'Failed to select image');
+    }
+  };
+
+  const enhancePromptText = async (text: string): Promise<string> => {
+    if (!promptEnhancement) return text;
+
+    try {
+      setIsEnhancing(true);
+      const result = await enhancePrompt(text);
+      return result.enhanced_prompt;
+    } catch (error) {
+      console.error('Error enhancing prompt:', error);
+      return text;
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
+  const TabButton = ({
+    tab,
+    icon,
     title,
-    subtitle 
-  }: { 
+    subtitle
+  }: {
     tab: 'generate' | 'edit';
     icon: React.ReactNode;
     title: string;
@@ -195,9 +273,9 @@ export default function ImageScreen() {
     <TouchableOpacity
       style={[
         styles.modelCard,
-        selectedModel === model.name && styles.selectedModelCard
+        selectedModel === model.id && styles.selectedModelCard
       ]}
-      onPress={() => setSelectedModel(model.name)}
+      onPress={() => setSelectedModel(model.id)}
     >
       <View style={styles.modelHeader}>
         <Text style={styles.modelName}>{model.name}</Text>
@@ -231,9 +309,9 @@ export default function ImageScreen() {
     <TouchableOpacity
       style={[
         styles.qualityCard,
-        selectedQuality === quality.name && styles.selectedQualityCard
+        selectedQuality === quality.id && styles.selectedQualityCard
       ]}
-      onPress={() => setSelectedQuality(quality.name)}
+      onPress={() => setSelectedQuality(quality.id)}
     >
       <Text style={styles.qualityName}>{quality.name}</Text>
       <Text style={styles.qualityDescription}>{quality.description}</Text>
@@ -290,7 +368,7 @@ export default function ImageScreen() {
               Text to Image
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[
               styles.generationTypeButton,
@@ -315,7 +393,7 @@ export default function ImageScreen() {
           <TouchableOpacity style={styles.sourceImageButton} onPress={selectSourceImage}>
             {sourceImage ? (
               <View style={styles.sourceImageSelected}>
-                <ImageIcon size={24} color="#8B5CF6" />
+                <Image source={{ uri: sourceImage.uri }} style={styles.sourceImagePreview} />
                 <Text style={styles.sourceImageSelectedText}>Image Selected</Text>
               </View>
             ) : (
@@ -338,7 +416,7 @@ export default function ImageScreen() {
             value={prompt}
             onChangeText={setPrompt}
             placeholder={
-              generationType === 'text-to-image' 
+              generationType === 'text-to-image'
                 ? "A beautiful landscape with mountains and lakes at sunset..."
                 : "Change the sky to sunset colors, add more trees..."
             }
@@ -346,13 +424,17 @@ export default function ImageScreen() {
             multiline
             numberOfLines={3}
           />
-          <TouchableOpacity style={styles.enhanceButton}>
-            <Wand2 size={16} color="#8B5CF6" />
+          <TouchableOpacity
+            style={[styles.enhanceButton, isEnhancing && styles.enhanceButtonLoading]}
+            onPress={() => enhancePromptText(prompt).then(setPrompt)}
+            disabled={isEnhancing}
+          >
+            <Wand2 size={16} color={isEnhancing ? "#6B7280" : "#8B5CF6"} />
           </TouchableOpacity>
         </View>
-        
-        <ScrollView 
-          horizontal 
+
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.suggestionsScroll}
         >
@@ -417,7 +499,7 @@ export default function ImageScreen() {
           <Text style={styles.advancedTitle}>Advanced Settings</Text>
           <ChevronDown size={20} color="#9CA3AF" />
         </TouchableOpacity>
-        
+
         <View style={styles.advancedContent}>
           <View style={styles.sliderContainer}>
             <Text style={styles.sliderLabel}>Guidance Scale: {guidanceScale}</Text>
@@ -425,7 +507,7 @@ export default function ImageScreen() {
               <View style={[styles.sliderFill, { width: `${(guidanceScale / 20) * 100}%` }]} />
             </View>
           </View>
-          
+
           <View style={styles.sliderContainer}>
             <Text style={styles.sliderLabel}>Steps: {steps}</Text>
             <View style={styles.sliderTrack}>
@@ -466,7 +548,8 @@ export default function ImageScreen() {
       <CreditCostDisplay
         generationType="image"
         options={{
-          quality: selectedQuality.toLowerCase() as 'basic' | 'standard' | 'high',
+          quality: selectedQuality,
+          model: selectedModel,
         }}
         style={{ marginBottom: 24 }}
       />
@@ -474,8 +557,16 @@ export default function ImageScreen() {
       {isGenerating && (
         <View style={styles.progressSection}>
           <View style={styles.progressHeader}>
-            <Clock size={20} color="#8B5CF6" />
-            <Text style={styles.progressTitle}>Generating your image...</Text>
+            <View style={styles.progressTitleContainer}>
+              <Clock size={20} color="#8B5CF6" />
+              <Text style={styles.progressTitle}>Generating your image...</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => cancelGeneration()}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: `${generationProgress}%` }]} />
@@ -486,7 +577,7 @@ export default function ImageScreen() {
 
       <TouchableOpacity
         style={[styles.generateButton, isGenerating && styles.generatingButton]}
-        onPress={generateImage}
+        onPress={handleGenerateImage}
         disabled={isGenerating}
       >
         <LinearGradient
@@ -509,17 +600,26 @@ export default function ImageScreen() {
   const renderEditTab = () => (
     <View style={styles.tabContent}>
       <View style={styles.uploadSection}>
-        <TouchableOpacity style={styles.uploadButton}>
-          <LinearGradient
-            colors={['#8B5CF6', '#EC4899']}
-            style={styles.uploadGradient}
-          >
-            <Upload size={32} color="#FFFFFF" />
-          </LinearGradient>
-          <Text style={styles.uploadTitle}>Upload Image to Edit</Text>
-          <Text style={styles.uploadSubtitle}>
-            Select from gallery or use a generated image
-          </Text>
+        <TouchableOpacity style={styles.uploadButton} onPress={selectEditImage}>
+          {editImageData ? (
+            <View style={styles.uploadedImageContainer}>
+              <Image source={{ uri: editImageData.uri }} style={styles.uploadedImage} />
+              <Text style={styles.uploadedImageText}>Image Ready for Editing</Text>
+            </View>
+          ) : (
+            <>
+              <LinearGradient
+                colors={['#8B5CF6', '#EC4899']}
+                style={styles.uploadGradient}
+              >
+                <Upload size={32} color="#FFFFFF" />
+              </LinearGradient>
+              <Text style={styles.uploadTitle}>Upload Image to Edit</Text>
+              <Text style={styles.uploadSubtitle}>
+                Select from gallery or use a generated image
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -538,13 +638,13 @@ export default function ImageScreen() {
 
       <View style={styles.editToolsSection}>
         <Text style={styles.sectionTitle}>Editing Tools</Text>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[
             styles.editTool,
-            selectedEditTool === 'change-outfit' && styles.selectedEditTool
+            selectedEditTool === 'restyle' && styles.selectedEditTool
           ]}
-          onPress={() => setSelectedEditTool('change-outfit')}
+          onPress={() => setSelectedEditTool('restyle')}
         >
           <LinearGradient
             colors={['#F59E0B', '#EF4444']}
@@ -553,9 +653,9 @@ export default function ImageScreen() {
             <Palette size={24} color="#FFFFFF" />
           </LinearGradient>
           <View style={styles.editToolContent}>
-            <Text style={styles.editToolTitle}>Change Outfit</Text>
+            <Text style={styles.editToolTitle}>Restyle</Text>
             <Text style={styles.editToolDescription}>
-              Modify clothing and accessories with AI precision
+              Transform style and appearance with AI precision
             </Text>
           </View>
           <View style={styles.editToolBadge}>
@@ -563,12 +663,12 @@ export default function ImageScreen() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
             styles.editTool,
-            selectedEditTool === 'edit-details' && styles.selectedEditTool
+            selectedEditTool === 'inpaint' && styles.selectedEditTool
           ]}
-          onPress={() => setSelectedEditTool('edit-details')}
+          onPress={() => setSelectedEditTool('inpaint')}
         >
           <LinearGradient
             colors={['#10B981', '#059669']}
@@ -577,19 +677,19 @@ export default function ImageScreen() {
             <Edit3 size={24} color="#FFFFFF" />
           </LinearGradient>
           <View style={styles.editToolContent}>
-            <Text style={styles.editToolTitle}>Edit Details</Text>
+            <Text style={styles.editToolTitle}>Inpaint</Text>
             <Text style={styles.editToolDescription}>
-              Fine-tune facial features, hair, and expressions
+              Fill in or modify specific areas of the image
             </Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
             styles.editTool,
-            selectedEditTool === 'restyle-region' && styles.selectedEditTool
+            selectedEditTool === 'outpaint' && styles.selectedEditTool
           ]}
-          onPress={() => setSelectedEditTool('restyle-region')}
+          onPress={() => setSelectedEditTool('outpaint')}
         >
           <LinearGradient
             colors={['#8B5CF6', '#3B82F6']}
@@ -598,19 +698,19 @@ export default function ImageScreen() {
             <Wand2 size={24} color="#FFFFFF" />
           </LinearGradient>
           <View style={styles.editToolContent}>
-            <Text style={styles.editToolTitle}>Restyle Region</Text>
+            <Text style={styles.editToolTitle}>Outpaint</Text>
             <Text style={styles.editToolDescription}>
-              Mask and transform specific areas with prompts
+              Extend the image beyond its original boundaries
             </Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
             styles.editTool,
-            selectedEditTool === 'background-replace' && styles.selectedEditTool
+            selectedEditTool === 'background_replace' && styles.selectedEditTool
           ]}
-          onPress={() => setSelectedEditTool('background-replace')}
+          onPress={() => setSelectedEditTool('background_replace')}
         >
           <LinearGradient
             colors={['#EC4899', '#BE185D']}
@@ -630,7 +730,7 @@ export default function ImageScreen() {
       <CreditCostDisplay
         generationType="editing"
         options={{
-          editType: selectedEditTool === 'change-outfit' || selectedEditTool === 'restyle-region' ? 'advanced' : 'basic',
+          editType: selectedEditTool === 'background_replace' || selectedEditTool === 'restyle' ? 'advanced' : 'basic',
         }}
         style={{ marginBottom: 24 }}
       />
@@ -638,8 +738,16 @@ export default function ImageScreen() {
       {isEditing && (
         <View style={styles.progressSection}>
           <View style={styles.progressHeader}>
-            <Clock size={20} color="#8B5CF6" />
-            <Text style={styles.progressTitle}>Editing your image...</Text>
+            <View style={styles.progressTitleContainer}>
+              <Clock size={20} color="#8B5CF6" />
+              <Text style={styles.progressTitle}>Editing your image...</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => cancelGeneration()}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: `${editProgress}%` }]} />
@@ -650,7 +758,7 @@ export default function ImageScreen() {
 
       <TouchableOpacity
         style={[styles.generateButton, isEditing && styles.generatingButton]}
-        onPress={editImage}
+        onPress={handleEditImage}
         disabled={isEditing}
       >
         <LinearGradient
@@ -668,29 +776,29 @@ export default function ImageScreen() {
         </LinearGradient>
       </TouchableOpacity>
 
-      <View style={styles.recentEditsSection}>
-        <Text style={styles.sectionTitle}>Recent Edits</Text>
-        <View style={styles.recentEditsGrid}>
-          {[1, 2, 3, 4].map((item) => (
-            <TouchableOpacity key={item} style={styles.recentEditCard}>
-              <View style={styles.recentEditPlaceholder}>
-                <ImageIcon size={24} color="#6B7280" />
-              </View>
-              <View style={styles.recentEditActions}>
-                <TouchableOpacity style={styles.recentEditAction}>
-                  <Heart size={16} color="#EF4444" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.recentEditAction}>
-                  <Download size={16} color="#8B5CF6" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.recentEditAction}>
-                  <Share size={16} color="#10B981" />
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ))}
+      {generatedImages.length > 0 && (
+        <View style={styles.recentEditsSection}>
+          <Text style={styles.sectionTitle}>Generated Images</Text>
+          <View style={styles.recentEditsGrid}>
+            {generatedImages.slice(0, 4).map((imageUrl, index) => (
+              <TouchableOpacity key={index} style={styles.recentEditCard}>
+                <Image source={{ uri: imageUrl }} style={styles.generatedImagePreview} />
+                <View style={styles.recentEditActions}>
+                  <TouchableOpacity style={styles.recentEditAction}>
+                    <Heart size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.recentEditAction}>
+                    <Download size={16} color="#8B5CF6" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.recentEditAction}>
+                    <Share size={16} color="#10B981" />
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 
@@ -1140,7 +1248,7 @@ const styles = StyleSheet.create({
   progressHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
   progressTitle: {
@@ -1373,5 +1481,49 @@ const styles = StyleSheet.create({
   selectedEditTool: {
     borderColor: '#8B5CF6',
     backgroundColor: '#312E81',
+  },
+  sourceImagePreview: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  enhanceButtonLoading: {
+    opacity: 0.5,
+  },
+  uploadedImageContainer: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  uploadedImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+  },
+  uploadedImageText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#8B5CF6',
+  },
+  generatedImagePreview: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 8,
+  },
+  cancelButton: {
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  cancelButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  progressTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

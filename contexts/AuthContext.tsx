@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { authService } from '@/services/authService';
 import { UserService, UserProfile } from '@/services/userService';
 import { CreditService } from '@/services/creditService';
+import { websocketService } from '@/services/websocketService';
+import { iapService } from '@/services/iapService';
 import { SubscriptionStatus } from '@/types/database';
 import * as Linking from 'expo-linking';
 
@@ -24,6 +26,7 @@ interface AuthContextType {
   signInWithFacebook: () => Promise<{ error: any }>;
   signInWithTwitter: () => Promise<{ error: any }>;
   refreshProfile: () => Promise<void>;
+  refreshUserData: () => Promise<void>;
   deductCredits: (amount: number, description?: string) => Promise<boolean>;
   validateCredits: (
     generationType: 'image' | 'video' | 'training' | 'editing',
@@ -66,6 +69,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await fetchProfile(user.id);
     }
   };
+
+  // Alias for refreshProfile (used by IAP service)
+  const refreshUserData = refreshProfile;
 
   // Deduct credits with optimistic update
   const deductCredits = async (amount: number, description?: string): Promise<boolean> => {
@@ -145,6 +151,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Fetch profile if user is logged in
         if (session?.user?.id) {
           await fetchProfile(session.user.id);
+          
+          // Initialize WebSocket connection for real-time updates
+          try {
+            await websocketService.initialize(session.user.id);
+            console.log('WebSocket service initialized for user:', session.user.id);
+          } catch (error) {
+            console.error('Failed to initialize WebSocket service:', error);
+          }
+
+          // Initialize IAP service
+          try {
+            await iapService.initialize();
+            console.log('IAP service initialized');
+          } catch (error) {
+            console.error('Failed to initialize IAP service:', error);
+          }
         }
         
         setLoading(false);
@@ -161,6 +183,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Handle profile updates based on auth events
           if (session?.user?.id) {
             await fetchProfile(session.user.id);
+            
+            // Initialize WebSocket connection for real-time updates
+            try {
+              await websocketService.initialize(session.user.id);
+              console.log('WebSocket service initialized for user:', session.user.id);
+            } catch (error) {
+              console.error('Failed to initialize WebSocket service:', error);
+            }
+
+            // Initialize IAP service
+            try {
+              await iapService.initialize();
+              console.log('IAP service initialized');
+            } catch (error) {
+              console.error('Failed to initialize IAP service:', error);
+            }
             
             // Subscribe to profile changes for real-time updates
             if (profileSubscription.current) {
@@ -265,6 +303,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       creditSubscription.current.unsubscribe();
       creditSubscription.current = null;
     }
+    
+    // Disconnect WebSocket service
+    try {
+      await websocketService.disconnect();
+      console.log('WebSocket service disconnected');
+    } catch (error) {
+      console.error('Error disconnecting WebSocket service:', error);
+    }
+
+    // Disconnect IAP service
+    try {
+      await iapService.disconnect();
+      console.log('IAP service disconnected');
+    } catch (error) {
+      console.error('Error disconnecting IAP service:', error);
+    }
+    
     await supabase.auth.signOut();
   };
 
@@ -307,6 +362,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signInWithFacebook,
         signInWithTwitter,
         refreshProfile,
+        refreshUserData,
         deductCredits,
         validateCredits,
         getCreditCost,

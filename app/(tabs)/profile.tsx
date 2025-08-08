@@ -9,21 +9,55 @@ import {
   Switch,
   Image,
   Modal,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Settings, Crown, Heart, Grid3x3 as Grid, Film, Bell, Shield, CircleHelp as HelpCircle, LogOut, Check, Star, Zap, TrendingUp, Award, Calendar, Download, Share, Eye, Users, Bookmark } from 'lucide-react-native';
+import { Settings, Crown, Heart, Grid3x3 as Grid, Film, Bell, Shield, CircleHelp as HelpCircle, LogOut, Check, Star, Zap, TrendingUp, Award, Calendar, Download, Share, Eye, Users, Bookmark, Trash2 } from 'lucide-react-native';
 import { notificationService } from '@/services/notificationService';
 import NotificationPreferences from '@/components/NotificationPreferences';
 import SubscriptionStatusBadge from '@/components/SubscriptionStatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProfile } from '@/hooks/useProfile';
 import CreditDisplay from '@/components/CreditDisplay';
+import CreditPurchaseButton from '@/components/CreditPurchaseButton';
 
 export default function ProfileScreen() {
   const { user, profile, credits, subscriptionStatus, isSubscribed, signOut } = useAuth();
-  const [notifications, setNotifications] = useState(true);
-  const [privateProfile, setPrivateProfile] = useState(false);
-  const [selectedTab, setSelectedTab] = useState<'videos' | 'images' | 'liked'>('videos');
+  const {
+    // User data
+    stats,
+    achievements,
+    userContent,
+    settings,
+    
+    // Subscription data
+    subscriptionPlans,
+    subscriptionStatus: backendSubscriptionStatus,
+    
+    // Content management
+    selectedContentTab,
+    setSelectedContentTab,
+    
+    // Actions
+    loadUserData,
+    updateSettings,
+    shareContent,
+    deleteContent,
+    manageSubscription,
+    
+    // State
+    isLoading,
+    isLoadingContent,
+    error,
+    
+    // Pagination
+    hasMoreContent,
+    loadMoreContent,
+  } = useProfile();
+
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const testNotification = async () => {
     try {
@@ -37,53 +71,81 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadUserData();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleSettingToggle = async (setting: string, value: boolean) => {
+    try {
+      await updateSettings({ [setting]: value });
+    } catch (error) {
+      console.error('Failed to update setting:', error);
+    }
+  };
+
+  const handleSubscriptionAction = async (action: 'subscribe' | 'upgrade' | 'downgrade' | 'cancel', planId?: string) => {
+    try {
+      await manageSubscription(action, planId);
+    } catch (error) {
+      console.error('Failed to manage subscription:', error);
+    }
+  };
+
   const userStats = [
-    { label: 'Videos Created', value: profile?.total_videos_generated?.toLocaleString() || '0', icon: <Film size={16} color="#8B5CF6" /> },
-    { label: 'Images Generated', value: profile?.total_images_generated?.toLocaleString() || '0', icon: <Grid size={16} color="#EC4899" /> },
-    { label: 'Followers', value: '23.4K', icon: <Users size={16} color="#10B981" /> },
-    { label: 'Following', value: '567', icon: <Heart size={16} color="#EF4444" /> },
-  ];
-
-  const achievements = [
-    { title: 'Early Adopter', description: 'Joined in the first month', icon: <Star size={16} color="#F59E0B" /> },
-    { title: 'Creator Pro', description: '1000+ generations', icon: <Crown size={16} color="#8B5CF6" /> },
-    { title: 'Viral Hit', description: 'Video with 100K+ views', icon: <TrendingUp size={16} color="#10B981" /> },
-  ];
-
-  const subscriptionPlans = [
-    {
-      name: 'Basic',
-      price: 'Free',
-      period: 'Forever',
-      features: ['10 videos/month', '50 images/month', 'Basic models only', 'Standard quality'],
-      current: subscriptionStatus === 'free',
-      color: ['#6B7280', '#6B7280'],
+    { 
+      label: 'Videos Created', 
+      value: stats?.content.videosCreated?.toLocaleString() || '0', 
+      icon: <Film size={16} color="#8B5CF6" /> 
     },
-    {
-      name: 'Pro',
-      price: '$9.99',
-      period: '/month',
-      features: ['Unlimited videos', 'Unlimited images', 'All AI models', 'High quality', 'Priority support'],
-      current: subscriptionStatus === 'basic',
-      color: ['#8B5CF6', '#3B82F6'],
-      popular: true,
+    { 
+      label: 'Images Generated', 
+      value: stats?.content.imagesGenerated?.toLocaleString() || '0', 
+      icon: <Grid size={16} color="#EC4899" /> 
     },
-    {
-      name: 'Premium',
-      price: '$19.99',
-      period: '/month',
-      features: ['Everything in Pro', 'Custom model training', 'API access', 'Commercial license', 'White-label'],
-      current: subscriptionStatus === 'premium',
-      color: ['#F59E0B', '#EF4444'],
+    { 
+      label: 'Followers', 
+      value: stats?.social.followers?.toLocaleString() || '0', 
+      icon: <Users size={16} color="#10B981" /> 
+    },
+    { 
+      label: 'Following', 
+      value: stats?.social.following?.toLocaleString() || '0', 
+      icon: <Heart size={16} color="#EF4444" /> 
     },
   ];
 
-  const recentContent = [
-    { type: 'video', title: 'Cyberpunk City', views: '125K', likes: '12.5K' },
-    { type: 'image', title: 'Fantasy Portrait', views: '89K', likes: '8.9K' },
-    { type: 'video', title: 'Ocean Waves', views: '67K', likes: '6.7K' },
-    { type: 'image', title: 'Space Station', views: '45K', likes: '4.5K' },
-  ];
+  const getAchievementIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'star': return <Star size={16} color="#F59E0B" />;
+      case 'crown': return <Crown size={16} color="#8B5CF6" />;
+      case 'trending': return <TrendingUp size={16} color="#10B981" />;
+      case 'award': return <Award size={16} color="#EC4899" />;
+      default: return <Star size={16} color="#F59E0B" />;
+    }
+  };
+
+  const getSubscriptionPlansWithStatus = () => {
+    return subscriptionPlans.map(plan => ({
+      ...plan,
+      current: backendSubscriptionStatus?.planId === plan.id,
+      price: plan.price_monthly === 0 ? 'Free' : `$${plan.price_monthly}`,
+      period: plan.price_monthly === 0 ? 'Forever' : '/month',
+      color: plan.id === 'basic' ? ['#6B7280', '#6B7280'] :
+             plan.id === 'pro' ? ['#8B5CF6', '#3B82F6'] :
+             ['#F59E0B', '#EF4444'],
+    }));
+  };
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+    return num.toString();
+  };
 
   const StatCard = ({ stat }: { stat: any }) => (
     <View style={styles.statCard}>
@@ -98,11 +160,20 @@ export default function ProfileScreen() {
   const AchievementCard = ({ achievement }: { achievement: any }) => (
     <View style={styles.achievementCard}>
       <View style={styles.achievementIcon}>
-        {achievement.icon}
+        {getAchievementIcon(achievement.icon)}
       </View>
       <View style={styles.achievementContent}>
         <Text style={styles.achievementTitle}>{achievement.title}</Text>
         <Text style={styles.achievementDescription}>{achievement.description}</Text>
+        {achievement.rarity && (
+          <Text style={[styles.achievementRarity, { 
+            color: achievement.rarity === 'legendary' ? '#F59E0B' :
+                  achievement.rarity === 'epic' ? '#8B5CF6' :
+                  achievement.rarity === 'rare' ? '#10B981' : '#6B7280'
+          }]}>
+            {achievement.rarity.toUpperCase()}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -135,13 +206,22 @@ export default function ProfileScreen() {
         ))}
       </View>
       {!plan.current && (
-        <TouchableOpacity style={styles.upgradeButton}>
+        <TouchableOpacity 
+          style={styles.upgradeButton}
+          onPress={() => {
+            const currentPlanId = backendSubscriptionStatus?.planId || 'basic';
+            const action = plan.id === 'basic' ? 'downgrade' : 
+                          currentPlanId === 'basic' ? 'subscribe' : 'upgrade';
+            handleSubscriptionAction(action, plan.id);
+          }}
+        >
           <LinearGradient
             colors={plan.color}
             style={styles.upgradeGradient}
           >
             <Text style={styles.upgradeButtonText}>
-              {plan.name === 'Basic' ? 'Downgrade' : 'Upgrade'}
+              {plan.id === 'basic' ? 'Downgrade' : 
+               backendSubscriptionStatus?.planId === 'basic' ? 'Subscribe' : 'Upgrade'}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -150,31 +230,56 @@ export default function ProfileScreen() {
   );
 
   const ContentCard = ({ content }: { content: any }) => (
-    <TouchableOpacity style={styles.contentCard}>
+    <View style={styles.contentCard}>
       <View style={styles.contentPreview}>
-        {content.type === 'video' ? (
-          <Film size={24} color="#8B5CF6" />
+        {content.content_type === 'video' ? (
+          content.thumbnail_url ? (
+            <Image source={{ uri: content.thumbnail_url }} style={styles.contentThumbnail} />
+          ) : (
+            <Film size={24} color="#8B5CF6" />
+          )
         ) : (
-          <Grid size={24} color="#EC4899" />
+          content.image_url ? (
+            <Image source={{ uri: content.image_url }} style={styles.contentThumbnail} />
+          ) : (
+            <Grid size={24} color="#EC4899" />
+          )
         )}
       </View>
       <View style={styles.contentInfo}>
-        <Text style={styles.contentTitle}>{content.title}</Text>
+        <Text style={styles.contentTitle} numberOfLines={1}>
+          {content.prompt || 'Untitled'}
+        </Text>
         <View style={styles.contentStats}>
           <View style={styles.contentStat}>
-            <Eye size={12} color="#94A3B8" />
-            <Text style={styles.contentStatText}>{content.views}</Text>
+            <Heart size={12} color="#94A3B8" />
+            <Text style={styles.contentStatText}>{formatNumber(content.likes_count)}</Text>
           </View>
           <View style={styles.contentStat}>
-            <Heart size={12} color="#94A3B8" />
-            <Text style={styles.contentStatText}>{content.likes}</Text>
+            <Share size={12} color="#94A3B8" />
+            <Text style={styles.contentStatText}>{formatNumber(content.shares_count)}</Text>
+          </View>
+          <View style={styles.contentStat}>
+            <Zap size={12} color="#F59E0B" />
+            <Text style={styles.contentStatText}>{content.credits_used}</Text>
           </View>
         </View>
       </View>
-      <TouchableOpacity style={styles.contentAction}>
-        <Share size={16} color="#8B5CF6" />
-      </TouchableOpacity>
-    </TouchableOpacity>
+      <View style={styles.contentActions}>
+        <TouchableOpacity 
+          style={styles.contentAction}
+          onPress={() => shareContent(content.id)}
+        >
+          <Share size={16} color="#8B5CF6" />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.contentAction}
+          onPress={() => deleteContent(content.id)}
+        >
+          <Trash2 size={16} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 
   const SettingRow = ({ 
@@ -229,11 +334,11 @@ export default function ProfileScreen() {
     title: string;
   }) => (
     <TouchableOpacity
-      style={[styles.tabButton, selectedTab === tab && styles.activeTabButton]}
-      onPress={() => setSelectedTab(tab)}
+      style={[styles.tabButton, selectedContentTab === tab && styles.activeTabButton]}
+      onPress={() => setSelectedContentTab(tab)}
     >
       {icon}
-      <Text style={[styles.tabButtonText, selectedTab === tab && styles.activeTabButtonText]}>
+      <Text style={[styles.tabButtonText, selectedContentTab === tab && styles.activeTabButtonText]}>
         {title}
       </Text>
     </TouchableOpacity>
@@ -241,7 +346,17 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#8B5CF6"
+          />
+        }
+      >
         <LinearGradient
           colors={['#8B5CF6', '#EC4899']}
           style={styles.header}
@@ -270,10 +385,7 @@ export default function ProfileScreen() {
                 size="medium"
                 daysRemaining={profile?.subscriptionDaysRemaining}
               />
-              <CreditDisplay size="small" showAddButton onAddCredits={() => {
-                // TODO: Navigate to credit purchase screen
-                console.log('Add credits pressed');
-              }} />
+              <CreditDisplay size="small" showAddButton />
             </View>
             <View style={styles.joinDate}>
               <Calendar size={14} color="#E5E7EB" />
@@ -285,6 +397,13 @@ export default function ProfileScreen() {
         </LinearGradient>
 
         <View style={styles.content}>
+          {/* Error Display */}
+          {error && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
           <View style={styles.statsContainer}>
             {userStats.map((stat, index) => (
               <StatCard key={index} stat={stat} />
@@ -293,47 +412,98 @@ export default function ProfileScreen() {
 
           <View style={styles.achievementsSection}>
             <Text style={styles.sectionTitle}>Achievements</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.achievementsContainer}>
-                {achievements.map((achievement, index) => (
-                  <AchievementCard key={index} achievement={achievement} />
-                ))}
-              </View>
-            </ScrollView>
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#8B5CF6" style={{ marginVertical: 20 }} />
+            ) : achievements.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.achievementsContainer}>
+                  {achievements.map((achievement, index) => (
+                    <AchievementCard key={achievement.id || index} achievement={achievement} />
+                  ))}
+                </View>
+              </ScrollView>
+            ) : (
+              <Text style={styles.emptyText}>No achievements yet. Keep creating to unlock them!</Text>
+            )}
           </View>
 
           <View style={styles.contentTabsSection}>
             <View style={styles.contentTabs}>
               <TabButton
                 tab="videos"
-                icon={<Film size={20} color={selectedTab === 'videos' ? '#8B5CF6' : '#6B7280'} />}
+                icon={<Film size={20} color={selectedContentTab === 'videos' ? '#8B5CF6' : '#6B7280'} />}
                 title="Videos"
               />
               <TabButton
                 tab="images"
-                icon={<Grid size={20} color={selectedTab === 'images' ? '#8B5CF6' : '#6B7280'} />}
+                icon={<Grid size={20} color={selectedContentTab === 'images' ? '#8B5CF6' : '#6B7280'} />}
                 title="Images"
               />
               <TabButton
                 tab="liked"
-                icon={<Heart size={20} color={selectedTab === 'liked' ? '#8B5CF6' : '#6B7280'} />}
+                icon={<Heart size={20} color={selectedContentTab === 'liked' ? '#8B5CF6' : '#6B7280'} />}
                 title="Liked"
               />
             </View>
             
             <View style={styles.contentGrid}>
-              {recentContent.map((content, index) => (
-                <ContentCard key={index} content={content} />
-              ))}
+              {isLoadingContent && userContent.length === 0 ? (
+                <ActivityIndicator size="small" color="#8B5CF6" style={{ marginVertical: 20 }} />
+              ) : userContent.length > 0 ? (
+                <>
+                  {userContent.map((content, index) => (
+                    <ContentCard key={content.id} content={content} />
+                  ))}
+                  {hasMoreContent && (
+                    <TouchableOpacity 
+                      style={styles.loadMoreButton}
+                      onPress={loadMoreContent}
+                      disabled={isLoadingContent}
+                    >
+                      {isLoadingContent ? (
+                        <ActivityIndicator size="small" color="#8B5CF6" />
+                      ) : (
+                        <Text style={styles.loadMoreText}>Load More</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.emptyText}>
+                  {selectedContentTab === 'videos' ? 'No videos created yet' :
+                   selectedContentTab === 'images' ? 'No images generated yet' :
+                   'No liked content yet'}
+                </Text>
+              )}
             </View>
+          </View>
+
+          <View style={styles.creditPurchaseSection}>
+            <View style={styles.creditPurchaseHeader}>
+              <Text style={styles.sectionTitle}>Need More Credits?</Text>
+              <CreditPurchaseButton
+                variant="secondary"
+                text="Buy Credits"
+                onPurchaseComplete={(credits) => {
+                  console.log(`Successfully purchased ${credits} credits`);
+                }}
+              />
+            </View>
+            <Text style={styles.creditPurchaseDescription}>
+              Purchase credits to generate more AI content, train custom models, and access premium features.
+            </Text>
           </View>
 
           <View style={styles.subscriptionSection}>
             <Text style={styles.sectionTitle}>Subscription Plans</Text>
             <View style={styles.subscriptionGrid}>
-              {subscriptionPlans.map((plan, index) => (
-                <SubscriptionCard key={index} plan={plan} />
-              ))}
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#8B5CF6" style={{ marginVertical: 20 }} />
+              ) : (
+                getSubscriptionPlansWithStatus().map((plan, index) => (
+                  <SubscriptionCard key={plan.id} plan={plan} />
+                ))
+              )}
             </View>
           </View>
 
@@ -352,8 +522,8 @@ export default function ProfileScreen() {
               title="Private Profile"
               subtitle="Hide your profile from public discovery"
               showSwitch
-              switchValue={privateProfile}
-              onSwitchChange={setPrivateProfile}
+              switchValue={settings?.privacy_profile === 'private'}
+              onSwitchChange={(value) => handleSettingToggle('privacy_profile', value)}
             />
             
             <SettingRow
@@ -596,6 +766,11 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     lineHeight: 14,
   },
+  achievementRarity: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
+  },
   contentTabsSection: {
     marginBottom: 32,
   },
@@ -668,6 +843,10 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontWeight: '500',
   },
+  contentActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   contentAction: {
     width: 32,
     height: 32,
@@ -675,6 +854,47 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  contentThumbnail: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginVertical: 20,
+    fontStyle: 'italic',
+  },
+  loadMoreButton: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B5CF6',
+  },
+  creditPurchaseSection: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 32,
+  },
+  creditPurchaseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  creditPurchaseDescription: {
+    fontSize: 14,
+    color: '#94A3B8',
+    lineHeight: 18,
   },
   subscriptionSection: {
     marginBottom: 32,
@@ -836,5 +1056,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#007AFF',
+  },
+  errorContainer: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#EF4444',
+    textAlign: 'center',
   },
 });

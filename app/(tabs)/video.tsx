@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,46 +9,89 @@ import {
   SafeAreaView,
   Alert,
   Switch,
+  Image as RNImage,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Type, Image, SkipForward, Play, Upload, Wand as Wand2, Sparkles, Clock, Zap, Crown, Settings, ChevronDown, Film, Palette, Camera } from 'lucide-react-native';
+import { Type, Image, SkipForward, Play, Upload, Wand as Wand2, Clock, Settings, ChevronDown, Film, Camera, X, Check } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import CreditDisplay from '@/components/CreditDisplay';
 import CreditCostDisplay from '@/components/CreditCostDisplay';
+import { useVideoGeneration } from '@/hooks/useVideoGeneration';
+import { useImagePicker } from '@/hooks/useImagePicker';
 
 export default function VideoScreen() {
-  const { credits, isSubscribed, validateCredits, getCreditCost } = useAuth();
+  const { session } = useAuth();
   const [selectedMode, setSelectedMode] = useState<'text' | 'image' | 'frame'>('text');
   const [prompt, setPrompt] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('5s');
   const [selectedQuality, setSelectedQuality] = useState('Standard');
-  const [selectedModel, setSelectedModel] = useState('RunwayML Gen-3');
+  const [selectedModel, setSelectedModel] = useState('runwayml-gen3');
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [motionStrength, setMotionStrength] = useState(5);
   const [promptEnhancement, setPromptEnhancement] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [firstFrame, setFirstFrame] = useState<string | null>(null);
+  const [lastFrame, setLastFrame] = useState<string | null>(null);
+  const [enhancedPrompt, setEnhancedPrompt] = useState('');
+  const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
+
+  const { pickImage, takePhoto, requestPermissions } = useImagePicker();
+  
+  const {
+    isGenerating,
+    progress,
+    error,
+    generateTextToVideo,
+    generateImageToVideo,
+    generateFrameInterpolation,
+    cancelGeneration,
+    enhancePrompt,
+    calculateCost,
+  } = useVideoGeneration({
+    onProgress: (progress, status) => {
+      console.log(`Generation progress: ${progress}% (${status})`);
+    },
+    onComplete: (result) => {
+      Alert.alert(
+        'Video Generated!',
+        'Your AI video has been successfully created.',
+        [
+          { text: 'View in Feed', onPress: () => {/* Navigate to feed */} },
+          { text: 'OK' }
+        ]
+      );
+    },
+    onError: (error) => {
+      Alert.alert('Generation Failed', error);
+    },
+  });
 
   const videoModels = [
     { 
+      id: 'runwayml-gen3',
       name: 'RunwayML Gen-3', 
       description: 'Latest generation model with superior quality',
       speed: 'Fast',
       credits: 10
     },
     { 
+      id: 'pika-labs',
       name: 'Pika Labs', 
       description: 'Great for creative and artistic videos',
       speed: 'Medium',
       credits: 8
     },
     { 
+      id: 'stable-video-diffusion',
       name: 'Stable Video Diffusion', 
       description: 'Open source model with good results',
       speed: 'Slow',
       credits: 6
     },
     { 
+      id: 'zeroscope',
       name: 'Zeroscope', 
       description: 'Optimized for text-to-video generation',
       speed: 'Fast',
@@ -76,7 +119,7 @@ export default function VideoScreen() {
     { value: '4:3', label: 'Classic', icon: '📷' }
   ];
 
-  const promptSuggestions = [
+  const defaultPromptSuggestions = [
     'A majestic dragon flying through storm clouds',
     'Futuristic city with flying cars at sunset',
     'Ocean waves crashing against rocky cliffs',
@@ -85,38 +128,144 @@ export default function VideoScreen() {
     'Vintage car driving through neon-lit streets'
   ];
 
+  // Initialize permissions on mount
+  useEffect(() => {
+    requestPermissions();
+  }, []);
+
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim()) return;
+
+    try {
+      const result = await enhancePrompt(prompt);
+      setEnhancedPrompt(result.enhanced);
+      setPromptSuggestions(result.suggestions);
+      
+      Alert.alert(
+        'Prompt Enhanced',
+        'Your prompt has been enhanced with AI suggestions.',
+        [
+          { text: 'Use Enhanced', onPress: () => setPrompt(result.enhanced) },
+          { text: 'Keep Original', style: 'cancel' }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to enhance prompt. Please try again.');
+    }
+  };
+
+  const handleImagePicker = async (type: 'gallery' | 'camera', target: 'main' | 'first' | 'last') => {
+    try {
+      const result = type === 'gallery' 
+        ? await pickImage({ allowsEditing: true, aspect: [16, 9] })
+        : await takePhoto({ allowsEditing: true, aspect: [16, 9] });
+
+      if (result) {
+        switch (target) {
+          case 'main':
+            setSelectedImage(result.uri);
+            break;
+          case 'first':
+            setFirstFrame(result.uri);
+            break;
+          case 'last':
+            setLastFrame(result.uri);
+            break;
+        }
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to select image. Please try again.');
+    }
+  };
+
+  const showImagePicker = (target: 'main' | 'first' | 'last') => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Gallery'],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            handleImagePicker('camera', target);
+          } else if (buttonIndex === 2) {
+            handleImagePicker('gallery', target);
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        'Select Image',
+        'Choose how you want to select an image',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: () => handleImagePicker('camera', target) },
+          { text: 'Choose from Gallery', onPress: () => handleImagePicker('gallery', target) },
+        ]
+      );
+    }
+  };
+
   const generateVideo = async () => {
-    if (!prompt.trim() && selectedMode === 'text') {
+    if (!session?.user) {
+      Alert.alert('Login Required', 'Please log in to generate videos');
+      return;
+    }
+
+    // Validation based on mode
+    if (selectedMode === 'text' && !prompt.trim()) {
       Alert.alert('Error', 'Please enter a prompt');
       return;
     }
 
-    // Validate credits before generation
-    const validation = await validateCredits('video', {
-      duration: selectedDuration as '3s' | '5s' | '10s' | '15s',
-      quality: selectedQuality.toLowerCase() as 'basic' | 'standard' | 'high',
-    });
-
-    if (!validation.valid) {
-      Alert.alert('Insufficient Credits', validation.message || 'Not enough credits for this generation');
+    if (selectedMode === 'image' && !selectedImage) {
+      Alert.alert('Error', 'Please select an image to animate');
       return;
     }
 
-    setIsGenerating(true);
-    setGenerationProgress(0);
+    if (selectedMode === 'frame' && (!firstFrame || !lastFrame)) {
+      Alert.alert('Error', 'Please select both first and last frames');
+      return;
+    }
 
-    // Simulate generation progress
-    const interval = setInterval(() => {
-      setGenerationProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsGenerating(false);
-          Alert.alert('Success', 'Your video has been generated!');
-          return 100;
-        }
-        return prev + 5;
-      });
-    }, 500);
+    try {
+      switch (selectedMode) {
+        case 'text':
+          await generateTextToVideo({
+            prompt,
+            model: selectedModel,
+            duration: selectedDuration,
+            quality: selectedQuality,
+            aspectRatio,
+            motionStrength,
+            enhancePrompt: promptEnhancement,
+          });
+          break;
+
+        case 'image':
+          await generateImageToVideo({
+            imageUri: selectedImage!,
+            prompt: prompt || 'Animate this image with natural movement',
+            model: selectedModel,
+            duration: selectedDuration,
+            quality: selectedQuality,
+            aspectRatio,
+            motionStrength,
+          });
+          break;
+
+        case 'frame':
+          await generateFrameInterpolation({
+            firstFrameUri: firstFrame!,
+            lastFrameUri: lastFrame!,
+            duration: selectedDuration,
+            quality: selectedQuality,
+          });
+          break;
+      }
+    } catch (error) {
+      console.error('Generation error:', error);
+    }
   };
 
   const VideoModeCard = ({ 
@@ -163,9 +312,9 @@ export default function VideoScreen() {
     <TouchableOpacity
       style={[
         styles.modelCard,
-        selectedModel === model.name && styles.selectedModelCard
+        selectedModel === model.id && styles.selectedModelCard
       ]}
-      onPress={() => setSelectedModel(model.name)}
+      onPress={() => setSelectedModel(model.id)}
     >
       <View style={styles.modelHeader}>
         <Text style={styles.modelName}>{model.name}</Text>
@@ -207,7 +356,7 @@ export default function VideoScreen() {
           multiline
           numberOfLines={4}
         />
-        <TouchableOpacity style={styles.enhanceButton}>
+        <TouchableOpacity style={styles.enhanceButton} onPress={handleEnhancePrompt}>
           <Wand2 size={16} color="#8B5CF6" />
         </TouchableOpacity>
       </View>
@@ -217,28 +366,78 @@ export default function VideoScreen() {
         showsHorizontalScrollIndicator={false}
         style={styles.suggestionsScroll}
       >
-        {promptSuggestions.map((suggestion, index) => (
+        {(promptSuggestions.length > 0 ? promptSuggestions : defaultPromptSuggestions).map((suggestion, index) => (
           <PromptSuggestion key={index} suggestion={suggestion} />
         ))}
       </ScrollView>
+
+      {enhancedPrompt && (
+        <View style={styles.enhancedPromptContainer}>
+          <Text style={styles.enhancedPromptLabel}>Enhanced Prompt:</Text>
+          <Text style={styles.enhancedPromptText}>{enhancedPrompt}</Text>
+          <TouchableOpacity 
+            style={styles.useEnhancedButton}
+            onPress={() => setPrompt(enhancedPrompt)}
+          >
+            <Check size={16} color="#10B981" />
+            <Text style={styles.useEnhancedText}>Use Enhanced</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 
   const renderImageToVideo = () => (
     <View style={styles.inputSection}>
       <Text style={styles.inputLabel}>Upload image to animate</Text>
-      <TouchableOpacity style={styles.uploadArea}>
-        <LinearGradient
-          colors={['#8B5CF6', '#EC4899']}
-          style={styles.uploadIcon}
+      
+      {selectedImage ? (
+        <View style={styles.selectedImageContainer}>
+          <RNImage source={{ uri: selectedImage }} style={styles.selectedImage} />
+          <TouchableOpacity 
+            style={styles.removeImageButton}
+            onPress={() => setSelectedImage(null)}
+          >
+            <X size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.changeImageButton}
+            onPress={() => showImagePicker('main')}
+          >
+            <Text style={styles.changeImageText}>Change Image</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity 
+          style={styles.uploadArea}
+          onPress={() => showImagePicker('main')}
         >
-          <Camera size={32} color="#FFFFFF" />
-        </LinearGradient>
-        <Text style={styles.uploadTitle}>Select Image</Text>
-        <Text style={styles.uploadSubtitle}>
-          Choose from gallery or use a generated image
-        </Text>
-      </TouchableOpacity>
+          <LinearGradient
+            colors={['#8B5CF6', '#EC4899']}
+            style={styles.uploadIcon}
+          >
+            <Camera size={32} color="#FFFFFF" />
+          </LinearGradient>
+          <Text style={styles.uploadTitle}>Select Image</Text>
+          <Text style={styles.uploadSubtitle}>
+            Choose from gallery or take a photo
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {selectedImage && (
+        <View style={styles.promptContainer}>
+          <TextInput
+            style={styles.textInput}
+            value={prompt}
+            onChangeText={setPrompt}
+            placeholder="Describe how you want the image to move (optional)..."
+            placeholderTextColor="#6B7280"
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+      )}
       
       <View style={styles.motionSection}>
         <Text style={styles.motionLabel}>Motion Strength: {motionStrength}</Text>
@@ -246,6 +445,10 @@ export default function VideoScreen() {
           <View style={styles.sliderTrack}>
             <View style={[styles.sliderFill, { width: `${(motionStrength / 10) * 100}%` }]} />
           </View>
+        </View>
+        <View style={styles.sliderLabels}>
+          <Text style={styles.sliderLabelText}>Subtle</Text>
+          <Text style={styles.sliderLabelText}>Dynamic</Text>
         </View>
       </View>
     </View>
@@ -255,16 +458,52 @@ export default function VideoScreen() {
     <View style={styles.inputSection}>
       <Text style={styles.inputLabel}>Upload first and last frames</Text>
       <View style={styles.frameUploadContainer}>
-        <TouchableOpacity style={styles.frameUpload}>
-          <Upload size={24} color="#8B5CF6" />
-          <Text style={styles.frameUploadText}>First Frame</Text>
+        <TouchableOpacity 
+          style={[styles.frameUpload, firstFrame && styles.frameUploadSelected]}
+          onPress={() => showImagePicker('first')}
+        >
+          {firstFrame ? (
+            <RNImage source={{ uri: firstFrame }} style={styles.frameImage} />
+          ) : (
+            <>
+              <Upload size={24} color="#8B5CF6" />
+              <Text style={styles.frameUploadText}>First Frame</Text>
+            </>
+          )}
+          {firstFrame && (
+            <TouchableOpacity 
+              style={styles.removeFrameButton}
+              onPress={() => setFirstFrame(null)}
+            >
+              <X size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
+        
         <View style={styles.frameArrow}>
           <SkipForward size={20} color="#8B5CF6" />
         </View>
-        <TouchableOpacity style={styles.frameUpload}>
-          <Upload size={24} color="#8B5CF6" />
-          <Text style={styles.frameUploadText}>Last Frame</Text>
+        
+        <TouchableOpacity 
+          style={[styles.frameUpload, lastFrame && styles.frameUploadSelected]}
+          onPress={() => showImagePicker('last')}
+        >
+          {lastFrame ? (
+            <RNImage source={{ uri: lastFrame }} style={styles.frameImage} />
+          ) : (
+            <>
+              <Upload size={24} color="#8B5CF6" />
+              <Text style={styles.frameUploadText}>Last Frame</Text>
+            </>
+          )}
+          {lastFrame && (
+            <TouchableOpacity 
+              style={styles.removeFrameButton}
+              onPress={() => setLastFrame(null)}
+            >
+              <X size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -441,14 +680,17 @@ export default function VideoScreen() {
             </View>
           </View>
 
-          <CreditCostDisplay
-            generationType="video"
-            options={{
-              duration: selectedDuration as '3s' | '5s' | '10s' | '15s',
-              quality: selectedQuality.toLowerCase() as 'basic' | 'standard' | 'high',
-            }}
-            style={{ marginBottom: 24 }}
-          />
+          <View style={styles.costSection}>
+            <Text style={styles.costLabel}>Estimated Cost:</Text>
+            <Text style={styles.costValue}>
+              {calculateCost({
+                type: selectedMode === 'text' ? 'text_to_video' : 
+                      selectedMode === 'image' ? 'image_to_video' : 'frame_interpolation',
+                duration: selectedDuration,
+                quality: selectedQuality.toLowerCase(),
+              })} credits
+            </Text>
+          </View>
 
           {isGenerating && (
             <View style={styles.progressSection}>
@@ -457,12 +699,25 @@ export default function VideoScreen() {
                 <Text style={styles.progressTitle}>Generating your video...</Text>
               </View>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${generationProgress}%` }]} />
+                <View style={[styles.progressFill, { width: `${progress}%` }]} />
               </View>
-              <Text style={styles.progressText}>{generationProgress}% complete</Text>
+              <Text style={styles.progressText}>{progress}% complete</Text>
               <Text style={styles.progressSubtext}>
                 This may take 2-5 minutes depending on complexity
               </Text>
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={cancelGeneration}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {error && (
+            <View style={styles.errorSection}>
+              <Text style={styles.errorText}>Generation Failed</Text>
+              <Text style={styles.errorMessage}>{error}</Text>
             </View>
           )}
 
@@ -997,5 +1252,146 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  selectedImageContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  selectedImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+    backgroundColor: '#1E293B',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  changeImageButton: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.9)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  changeImageText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  frameUploadSelected: {
+    borderColor: '#8B5CF6',
+    backgroundColor: '#312E81',
+  },
+  frameImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
+  },
+  removeFrameButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  enhancedPromptContainer: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: '#10B981',
+  },
+  enhancedPromptLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
+    marginBottom: 8,
+  },
+  enhancedPromptText: {
+    fontSize: 14,
+    color: '#E5E7EB',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  useEnhancedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  useEnhancedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  costSection: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  costLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  costValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FCD34D',
+  },
+  cancelButton: {
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignSelf: 'center',
+    marginTop: 12,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  errorSection: {
+    backgroundColor: '#7F1D1D',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderLeftWidth: 3,
+    borderLeftColor: '#EF4444',
+  },
+  errorText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FCA5A5',
+    marginBottom: 8,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#FED7D7',
+    lineHeight: 20,
   },
 });

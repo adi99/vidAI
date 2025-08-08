@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Zap, Plus } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import CreditPurchaseModal from './CreditPurchaseModal';
 
 interface CreditDisplayProps {
   size?: 'small' | 'medium' | 'large';
@@ -18,6 +19,7 @@ export default function CreditDisplay({
   style 
 }: CreditDisplayProps) {
   const { credits, formatCredits } = useAuth();
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
 
   const getStyles = () => {
     switch (size) {
@@ -70,7 +72,13 @@ export default function CreditDisplay({
       {showAddButton && (
         <TouchableOpacity 
           style={[styles.addButton, size === 'small' && styles.smallAddButton]}
-          onPress={onAddCredits}
+          onPress={() => {
+            if (onAddCredits) {
+              onAddCredits();
+            } else {
+              setShowPurchaseModal(true);
+            }
+          }}
         >
           <LinearGradient
             colors={['#8B5CF6', '#3B82F6']}
@@ -80,6 +88,14 @@ export default function CreditDisplay({
           </LinearGradient>
         </TouchableOpacity>
       )}
+      
+      <CreditPurchaseModal
+        visible={showPurchaseModal}
+        onClose={() => setShowPurchaseModal(false)}
+        onPurchaseComplete={(credits) => {
+          console.log(`Successfully purchased ${credits} credits`);
+        }}
+      />
     </View>
   );
 }

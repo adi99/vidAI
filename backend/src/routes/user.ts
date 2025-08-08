@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { authenticateUser, AuthenticatedRequest } from '../middleware/auth';
 import { validateBody, validateQuery } from '../middleware/validation';
 import { supabaseAdmin } from '../config/database';
+import { ReceiptValidationService } from '../services/receiptValidationService';
+import { logger } from '../config/logger';
 
 // Schemas
 const UserContentQuery = z.object({
@@ -340,7 +342,7 @@ router.get(
     }
 );
 
-// POST /api/user/credits/purchase - Process credit purchase
+// POST /api/user/credits/purchase - Process credit purchase with receipt validation
 router.post(
     '/credits/purchase',
     authenticateUser,
@@ -350,6 +352,13 @@ router.post(
         const userId = req.user!.id;
 
         try {
+            logger.info('Processing credit purchase', {
+                userId,
+                packageId: body.package_id,
+                platform: body.platform,
+                transactionId: body.transaction_id,
+            });
+
             // Define credit packages
             const packages = {
                 'credits_100': { credits: 100, price_usd: 4.99 },
@@ -368,13 +377,65 @@ router.post(
                 });
             }
 
-            // In a real implementation, you would:
-            // 1. Verify the receipt with Apple/Google
-            // 2. Check if transaction_id has already been processed
-            // 3. Add credits to user account
-            // 4. Create transaction record
+            // Check if transaction has already been processed
+            const isProcessed = await ReceiptValidationService.isTransactionProcessed(body.transaction_id);
+            if (isProcessed) {
+                return res.status(409).json({
+                    status: 'error',
+                    code: 'DUPLICATE_TRANSACTION',
+                    message: 'This transaction has already been processed',
+                    timestamp: new Date().toISOString(),
+                });
+            }
 
-            // For now, we'll simulate successful purchase
+            // Validate receipt with platform-specific validation
+            let validationResult;
+            if (body.platform === 'ios') {
+                validationResult = await ReceiptValidationService.validateIOSReceipt({
+                    receiptData: body.receipt_data,
+                    productId: body.package_id,
+                });
+            } else if (body.platform === 'android') {
+                // For Android, we need to extract additional parameters from the receipt data
+                // In a real implementation, these would come from the client
+                const receiptData = JSON.parse(body.receipt_data || '{}');
+                validationResult = await ReceiptValidationService.validateAndroidReceipt({
+                    packageName: receiptData.packageName || process.env.ANDROID_PACKAGE_NAME || 'com.yourapp.package',
+                    productToken: receiptData.purchaseToken || body.transaction_id,
+                    productId: body.package_id,
+                    isSub: false,
+                });
+            } else {
+                return res.status(400).json({
+                    status: 'error',
+                    code: 'UNSUPPORTED_PLATFORM',
+                    message: 'Platform not supported',
+                    timestamp: new Date().toISOString(),
+                });
+            }
+
+            if (!validationResult.isValid) {
+                logger.warn('Receipt validation failed', {
+                    userId,
+                    transactionId: body.transaction_id,
+                    error: validationResult.error,
+                });
+
+                return res.status(400).json({
+                    status: 'error',
+                    code: 'INVALID_RECEIPT',
+                    message: ReceiptValidationService.getValidationErrorMessage(validationResult.error || 'Unknown error'),
+                    timestamp: new Date().toISOString(),
+                });
+            }
+
+            logger.info('Receipt validation successful', {
+                userId,
+                transactionId: body.transaction_id,
+                platform: body.platform,
+            });
+
+            // Store receipt record
             const { error: receiptError } = await supabaseAdmin
                 .from('iap_receipts')
                 .insert({
@@ -386,6 +447,8 @@ router.post(
                     credits_purchased: packageInfo.credits,
                     price_usd: packageInfo.price_usd,
                     status: 'verified',
+                    validation_result: validationResult,
+                    processed_at: new Date().toISOString(),
                 })
                 .select()
                 .single();
@@ -411,6 +474,7 @@ router.post(
                     package_id: body.package_id,
                     transaction_id: body.transaction_id,
                     platform: body.platform,
+                    validation_result: validationResult,
                 },
             });
 
@@ -424,6 +488,21 @@ router.post(
                     .eq('id', userId);
 
                 if (updateError) throw updateError;
+
+                // Create credit transaction record manually
+                await supabaseAdmin
+                    .from('credit_transactions')
+                    .insert({
+                        user_id: userId,
+                        transaction_type: 'purchase',
+                        amount: packageInfo.credits,
+                        description: `Credit purchase: ${body.package_id}`,
+                        metadata: {
+                            package_id: body.package_id,
+                            transaction_id: body.transaction_id,
+                            platform: body.platform,
+                        },
+                    });
             }
 
             // Get updated credit balance
@@ -435,6 +514,13 @@ router.post(
 
             if (userError) throw userError;
 
+            logger.info('Credit purchase completed successfully', {
+                userId,
+                transactionId: body.transaction_id,
+                creditsAdded: packageInfo.credits,
+                newBalance: user.credits,
+            });
+
             res.json({
                 status: 'success',
                 purchase: {
@@ -443,10 +529,21 @@ router.post(
                     creditsPurchased: packageInfo.credits,
                     priceUsd: packageInfo.price_usd,
                     newBalance: user.credits,
+                    validationResult: {
+                        platform: validationResult.platform,
+                        transactionId: validationResult.transactionId,
+                        purchaseDate: validationResult.purchaseDate,
+                    },
                 },
                 timestamp: new Date().toISOString(),
             });
         } catch (error: any) {
+            logger.error('Credit purchase failed', {
+                userId,
+                transactionId: body.transaction_id,
+                error: error.message,
+            });
+
             res.status(500).json({
                 status: 'error',
                 code: 'PURCHASE_ERROR',

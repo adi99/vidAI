@@ -21,6 +21,38 @@
         "list_extensions",
         "list_branches"
       ]
+    },
+    "exa": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "exa",
+        "--key",
+        "233eb828-a310-4d83-9814-b91fb6a242a7",
+        "--profile",
+        "domestic-magpie-X1q55k"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "web_search_exa",
+        "crawling_exa"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "resolve-library-id",
+        "get-library-docs"
+      ]
     }
   }
 }
