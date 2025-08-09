@@ -2,6 +2,9 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { authenticateUser, AuthenticatedRequest } from '../middleware/auth';
 import { validateBody, validateParams } from '../middleware/validation';
+import { sanitizeInput, logModerationEvent } from '../middleware/contentModerationMiddleware';
+import { contentModerationService } from '../services/contentModerationService';
+import { trainingRateLimit, trainingUploadRateLimit, logRateLimit } from '../middleware/rateLimitMiddleware';
 import { queues, QueueNames } from '../queues';
 import { supabaseAdmin } from '../config/database';
 // TrainingJobSchema is defined inline below
@@ -81,7 +84,11 @@ const router = Router();
 router.post(
     '/upload',
     authenticateUser,
+    trainingUploadRateLimit,
+    sanitizeInput,
     validateBody(ImageUploadBody),
+    logModerationEvent,
+    logRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
         const body = req.body as z.infer<typeof ImageUploadBody>;
         const userId = req.user!.id;
@@ -139,12 +146,27 @@ router.post(
 router.post(
     '/start',
     authenticateUser,
+    trainingRateLimit,
+    sanitizeInput,
     validateBody(TrainingStartBody),
+    logModerationEvent,
+    logRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
         const body = req.body as z.infer<typeof TrainingStartBody>;
         const userId = req.user!.id;
 
         try {
+            // Validate model name for inappropriate content
+            const modelNameValidation = contentModerationService.moderatePrompt(body.model_name);
+            if (!modelNameValidation.isAllowed) {
+                return res.status(400).json({
+                    code: 'INAPPROPRIATE_MODEL_NAME',
+                    message: 'Model name contains inappropriate content',
+                    reason: modelNameValidation.reason,
+                    timestamp: new Date().toISOString(),
+                });
+            }
+
             const cost = TRAINING_COSTS[body.steps];
 
             // Check credits before starting training

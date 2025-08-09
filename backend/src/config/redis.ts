@@ -48,10 +48,10 @@ export const Priority = {
  * Queue names
  */
 export const QueueNames = {
-  IMAGE: 'gen:image',
-  VIDEO: 'gen:video',
-  TRAINING: 'train:model',
-  DLQ_SUFFIX: ':dlq',
+  IMAGE: 'gen-image',
+  VIDEO: 'gen-video',
+  TRAINING: 'train-model',
+  DLQ_SUFFIX: '-dlq',
 } as const;
 
 export type QueueName = typeof QueueNames[keyof typeof QueueNames];

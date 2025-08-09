@@ -25,6 +25,11 @@ import AnimatedCard from '@/components/ui/AnimatedCard';
 import GestureVideoPlayer from '@/components/ui/GestureVideoPlayer';
 import PullToRefreshFeed from '@/components/ui/PullToRefreshFeed';
 
+// Import media optimization components
+import PreloadVideoPlayer from '@/components/ui/PreloadVideoPlayer';
+import LazyImage from '@/components/ui/LazyImage';
+import { useMediaPreloader } from '@/hooks/useMediaPreloader';
+
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function FeedScreen() {
@@ -53,6 +58,20 @@ export default function FeedScreen() {
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  // Media preloader for smooth scrolling
+  const {
+    preloadAroundIndex,
+    prefetchNextBatch,
+    getPreloadStatus,
+    isPreloading: mediaPreloading,
+    preloadedCount,
+  } = useMediaPreloader(feed, currentIndex, {
+    preloadDistance: 3,
+    maxConcurrentPreloads: 2,
+    enableThumbnails: true,
+    quality: 'medium',
+  });
 
   const handleToggleLike = useCallback(async (item: FeedItem) => {
     if (!session?.user) {
@@ -152,23 +171,54 @@ export default function FeedScreen() {
     </Animated.View>
   );
 
-  const renderVideo = ({ item, index }: { item: FeedItem; index: number }) => (
-    <View style={styles.videoContainer}>
-      <GestureVideoPlayer
-        source={{ uri: item.media_url }}
-        shouldPlay={index === currentIndex && isPlaying}
-        isLooping
-        isMuted={isMuted}
-        style={styles.video}
-        showControls={true}
-        autoHideControls={true}
-        controlsTimeout={2000}
-        onPlaybackStatusUpdate={(status) => {
-          if (status.isLoaded) {
-            setIsPlaying(status.isPlaying || false);
-          }
-        }}
-      />
+  const renderVideo = ({ item, index }: { item: FeedItem; index: number }) => {
+    // Get next items for preloading
+    const nextItems = feed.slice(index + 1, index + 4).map(feedItem => ({
+      id: feedItem.id,
+      url: feedItem.media_url,
+      type: feedItem.content_type as 'image' | 'video',
+      thumbnail: feedItem.thumbnail_url,
+      duration: feedItem.duration ? parseFloat(feedItem.duration) : undefined,
+    }));
+
+    const preloadStatus = getPreloadStatus(item.id);
+
+    return (
+      <View style={styles.videoContainer}>
+        {item.content_type === 'video' ? (
+          <PreloadVideoPlayer
+            source={{ uri: item.media_url }}
+            shouldPlay={index === currentIndex && isPlaying}
+            isLooping
+            isMuted={isMuted}
+            style={styles.video}
+            showControls={true}
+            autoHideControls={true}
+            controlsTimeout={2000}
+            preloadNext={nextItems}
+            quality="medium"
+            enableThumbnail={true}
+            onPlaybackStatusUpdate={(status) => {
+              if (status.isLoaded) {
+                setIsPlaying(status.isPlaying || false);
+              }
+            }}
+          />
+        ) : (
+          <LazyImage
+            source={{ uri: item.media_url }}
+            style={styles.video}
+            quality="high"
+            progressive={true}
+            resizeMode="cover"
+            onLoad={() => {
+              // Image loaded successfully
+            }}
+            onError={(error) => {
+              console.error('Failed to load image:', error);
+            }}
+          />
+        )}
 
       {/* Top overlay with model info */}
       <LinearGradient
@@ -386,7 +436,13 @@ export default function FeedScreen() {
             const index = Math.round(event.nativeEvent.contentOffset.y / SCREEN_HEIGHT);
             setCurrentIndex(index);
           }}
-          onEndReached={loadMore}
+          onEndReached={async () => {
+            const newItems = await loadMore();
+            // Prefetch media for new items
+            if (newItems && newItems.length > 0) {
+              await prefetchNextBatch(newItems);
+            }
+          }}
           onEndReachedThreshold={0.5}
           ListFooterComponent={renderFooter}
           ListEmptyComponent={renderEmpty}
@@ -402,8 +458,8 @@ export default function FeedScreen() {
             setCommentsModalVisible(false);
             setSelectedItem(null);
           }}
-          contentId={selectedItem.id}
-          contentType={selectedItem.content_type}
+          contentId={selectedItem!.id}
+          contentType={selectedItem!.content_type}
           onCommentAdded={handleCommentAdded}
         />
       )}
@@ -633,3 +689,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+}

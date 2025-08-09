@@ -15,7 +15,7 @@ export interface UseFeedReturn {
   error: string | null;
   hasMore: boolean;
   refreshing: boolean;
-  loadMore: () => Promise<void>;
+  loadMore: () => Promise<FeedItem[] | null>;
   refresh: () => Promise<void>;
   toggleLike: (contentId: string, contentType: 'video' | 'image') => Promise<void>;
   addComment: (contentId: string, contentType: 'video' | 'image', text: string) => Promise<void>;
@@ -72,10 +72,16 @@ export function useFeed(options: UseFeedOptions = {}): UseFeedReturn {
     await loadFeed(true, 0);
   }, [loadFeed]);
 
-  const loadMore = useCallback(async () => {
-    if (!hasMore || loading || refreshing) return;
-    await loadFeed(false, offset);
-  }, [hasMore, loading, refreshing, offset, loadFeed]);
+  const loadMore = useCallback(async (): Promise<FeedItem[] | null> => {
+    if (!hasMore || loading || refreshing) return null;
+    
+    const currentOffset = offset;
+    await loadFeed(false, currentOffset);
+    
+    // Return the new items that were loaded
+    const newItems = feed.slice(currentOffset);
+    return newItems;
+  }, [hasMore, loading, refreshing, offset, loadFeed, feed]);
 
   const toggleLike = useCallback(async (contentId: string, contentType: 'video' | 'image') => {
     if (!session?.user) return;

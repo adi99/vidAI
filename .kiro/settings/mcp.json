@@ -19,7 +19,9 @@
         "execute_sql",
         "list_migrations",
         "list_extensions",
-        "list_branches"
+        "list_branches",
+        "get_advisors",
+        "get_logs"
       ]
     },
     "exa": {

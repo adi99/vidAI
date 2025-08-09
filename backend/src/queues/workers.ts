@@ -4,6 +4,7 @@ import { moveToDlq } from './index';
 import { logger } from '../config/logger';
 import { supabaseAdmin } from '../config/database';
 import { pushNotificationService } from '../services/pushNotificationService';
+import { automatedModerationService } from '../services/automatedModerationService';
 
 // GPU orchestrator and providers
 import { createDefaultGPUOrchestrator } from '../services/gpu/orchestrator';
@@ -167,6 +168,29 @@ const processImage: Processor<ImageJobData, GenericResult> = async (job: Job<Ima
         p_thumbnail_url: result.imageUrl, // Use same URL for thumbnail for now
       });
 
+      // Perform automated content moderation
+      try {
+        const moderationAction = await automatedModerationService.moderateGeneratedContent(
+          job.data.imageId,
+          'image',
+          result.imageUrl,
+          job.data.userId
+        );
+        
+        logger.info('Image moderation completed', { 
+          jobId: job.id, 
+          imageId: job.data.imageId,
+          action: moderationAction.action,
+          confidence: moderationAction.confidence
+        });
+      } catch (moderationError: any) {
+        logger.error('Image moderation failed', { 
+          jobId: job.id, 
+          imageId: job.data.imageId,
+          error: moderationError.message 
+        });
+      }
+
       // Send push notification for completion
       try {
         const { PushNotificationService } = await import('../services/pushNotificationService');
@@ -268,6 +292,29 @@ const processVideo: Processor<VideoJobData, GenericResult> = async (job: Job<Vid
         p_media_url: result.videoUrl,
         p_thumbnail_url: result.videoUrl, // Use same URL for thumbnail for now
       });
+
+      // Perform automated content moderation
+      try {
+        const moderationAction = await automatedModerationService.moderateGeneratedContent(
+          job.data.videoId,
+          'video',
+          result.videoUrl,
+          job.data.userId
+        );
+        
+        logger.info('Video moderation completed', { 
+          jobId: job.id, 
+          videoId: job.data.videoId,
+          action: moderationAction.action,
+          confidence: moderationAction.confidence
+        });
+      } catch (moderationError: any) {
+        logger.error('Video moderation failed', { 
+          jobId: job.id, 
+          videoId: job.data.videoId,
+          error: moderationError.message 
+        });
+      }
 
       // Send push notification for completion
       try {

@@ -2,6 +2,17 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticateUser, AuthenticatedRequest } from '../middleware/auth';
 import { validateBody, validateParams, validateQuery } from '../middleware/validation';
+import { 
+  moderatePrompt, 
+  sanitizeInput, 
+  checkPreScreening, 
+  logModerationEvent 
+} from '../middleware/contentModerationMiddleware';
+import { 
+  imageGenerationRateLimit, 
+  videoGenerationRateLimit, 
+  logRateLimit 
+} from '../middleware/rateLimitMiddleware';
 import { queues, QueueNames } from '../queues';
 import { supabaseAdmin } from '../config/database';
 
@@ -129,7 +140,14 @@ const router = Router();
 router.post(
   '/image',
   authenticateUser,
+  imageGenerationRateLimit,
+  sanitizeInput,
   validateBody(ImageGenBody),
+  moderatePrompt('prompt'),
+  moderatePrompt('negative_prompt'),
+  checkPreScreening,
+  logModerationEvent,
+  logRateLimit,
   async (req: AuthenticatedRequest, res: Response) => {
     const body = req.body as z.infer<typeof ImageGenBody>;
     const userId = req.user!.id;
@@ -219,7 +237,14 @@ router.post(
 router.post(
   '/video',
   authenticateUser,
+  videoGenerationRateLimit,
+  sanitizeInput,
   validateBody(VideoGenBody),
+  moderatePrompt('prompt'),
+  moderatePrompt('negative_prompt'),
+  checkPreScreening,
+  logModerationEvent,
+  logRateLimit,
   async (req: AuthenticatedRequest, res: Response) => {
     const body = req.body as z.infer<typeof VideoGenBody>;
     const userId = req.user!.id;
@@ -450,7 +475,12 @@ router.post(
 router.post(
   '/image/edit',
   authenticateUser,
+  sanitizeInput,
   validateBody(ImageEditBody),
+  moderatePrompt('prompt'),
+  moderatePrompt('negative_prompt'),
+  checkPreScreening,
+  logModerationEvent,
   async (req: AuthenticatedRequest, res: Response) => {
     const body = req.body as z.infer<typeof ImageEditBody>;
     const userId = req.user!.id;
@@ -532,7 +562,12 @@ router.post(
 router.post(
   '/video/text-to-video',
   authenticateUser,
+  sanitizeInput,
   validateBody(TextToVideoBody),
+  moderatePrompt('prompt'),
+  moderatePrompt('negative_prompt'),
+  checkPreScreening,
+  logModerationEvent,
   async (req: AuthenticatedRequest, res: Response) => {
     const body = req.body as z.infer<typeof TextToVideoBody>;
     const userId = req.user!.id;
@@ -610,7 +645,12 @@ router.post(
 router.post(
   '/video/image-to-video',
   authenticateUser,
+  sanitizeInput,
   validateBody(ImageToVideoBody),
+  moderatePrompt('prompt'),
+  moderatePrompt('negative_prompt'),
+  checkPreScreening,
+  logModerationEvent,
   async (req: AuthenticatedRequest, res: Response) => {
     const body = req.body as z.infer<typeof ImageToVideoBody>;
     const userId = req.user!.id;

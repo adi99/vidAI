@@ -23,7 +23,7 @@
     "helmet": "^7.1.0",
     "ioredis": "^5.7.0",
     "morgan": "^1.10.0",
-    "node-apple-receipt-verify": "^1.15.1",
+    "node-apple-receipt-verify": "^1.15.0",
     "node-fetch": "^2.7.0",
     "winston": "^3.11.0",
     "zod": "^3.22.4"

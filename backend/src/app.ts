@@ -15,6 +15,7 @@ import socialRoutes from './routes/social';
 import userRoutes from './routes/user';
 import subscriptionRoutes from './routes/subscription';
 import notificationRoutes from './routes/notifications';
+import moderationRoutes from './routes/moderation';
 import healthRoutes from './routes/health';
 
 const app = express();
@@ -84,6 +85,7 @@ app.use('/api/feed', socialRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/moderation', moderationRoutes);
 
 // Queue health routes
 app.use('/health', healthRoutes);

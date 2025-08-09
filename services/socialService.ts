@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import networkService from './networkService';
 import errorHandlingService, { ERROR_CODES } from './errorHandlingService';
+import { databaseOptimizationService } from './databaseOptimizationService';
+import { redisCacheService } from './redisCacheService';
 
 // Types for social feed
 export interface FeedItem {
@@ -131,6 +133,12 @@ class SocialService {
     user_id?: string;
     sort?: 'recent' | 'popular' | 'trending';
   } = {}): Promise<FeedResponse> {
+    // Try to get from cache first
+    const cachedFeed = await redisCacheService.getCachedApiResponse<FeedResponse>('feed', params);
+    if (cachedFeed) {
+      return cachedFeed;
+    }
+
     return errorHandlingService.withRetry(
       async () => {
         try {
@@ -143,10 +151,17 @@ class SocialService {
           if (params.sort) queryParams.append('sort', params.sort);
 
           const endpoint = `/feed${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-          return await this.makeRequest<FeedResponse>(endpoint);
+          const response = await this.makeRequest<FeedResponse>(endpoint);
+          
+          // Cache the response
+          await redisCacheService.cacheFeedData(params, response.feed, {
+            ttl: 2 * 60 * 1000, // 2 minutes
+          });
+          
+          return response;
         } catch (error) {
-          // Fallback to direct database access if API is not available
-          console.warn('API not available, falling back to direct database access:', error);
+          // Fallback to optimized database access if API is not available
+          console.warn('API not available, falling back to optimized database access:', error);
           return this.getFeedFallback(params);
         }
       },
@@ -157,7 +172,7 @@ class SocialService {
     );
   }
 
-  // Fallback method using direct database access
+  // Fallback method using optimized database access
   private async getFeedFallback(params: {
     limit?: number;
     offset?: number;
@@ -165,13 +180,14 @@ class SocialService {
     user_id?: string;
     sort?: 'recent' | 'popular' | 'trending';
   } = {}): Promise<FeedResponse> {
-    const limit = params.limit || 20;
-    const offset = params.offset || 0;
-
     try {
-      const { data, error } = await supabase.rpc('get_public_feed', {
-        limit_count: limit,
-        offset_count: offset,
+      // Use optimized database service
+      const { data, error, fromCache } = await databaseOptimizationService.getOptimizedFeed({
+        limit: params.limit || 20,
+        offset: params.offset || 0,
+        contentType: params.content_type,
+        userId: params.user_id,
+        sort: params.sort,
       });
 
       if (error) {
@@ -192,16 +208,42 @@ class SocialService {
         created_at: item.created_at,
         model: item.model,
         duration: item.duration,
+        is_liked: item.is_liked,
+        is_bookmarked: item.is_bookmarked,
       }));
+
+      const response: FeedResponse = {
+        status: 'ok',
+        feed: feedItems,
+        pagination: {
+          limit: params.limit || 20,
+          offset: params.offset || 0,
+          total: feedItems.length,
+          hasMore: feedItems.length === (params.limit || 20),
+        },
+        filters: {
+          content_type: params.content_type || 'all',
+          sort: params.sort || 'recent',
+          user_id: params.user_id,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      // Cache the optimized response if not from cache
+      if (!fromCache) {
+        await redisCacheService.cacheFeedData(params, feedItems, {
+          ttl: 2 * 60 * 1000, // 2 minutes
+        });
+      }
 
       return {
         status: 'ok',
         feed: feedItems,
         pagination: {
-          limit,
-          offset,
+          limit: params.limit || 20,
+          offset: params.offset || 0,
           total: feedItems.length,
-          hasMore: feedItems.length === limit,
+          hasMore: feedItems.length === (params.limit || 20),
         },
         filters: {
           content_type: params.content_type || 'all',
