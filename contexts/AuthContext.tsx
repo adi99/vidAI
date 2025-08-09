@@ -7,6 +7,7 @@ import { UserService, UserProfile } from '@/services/userService';
 import { CreditService } from '@/services/creditService';
 import { websocketService } from '@/services/websocketService';
 import { iapService } from '@/services/iapService';
+import { oneSignalService } from '@/services/oneSignalService';
 import { SubscriptionStatus } from '@/types/database';
 import * as Linking from 'expo-linking';
 
@@ -167,6 +168,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (error) {
             console.error('Failed to initialize IAP service:', error);
           }
+
+          // Initialize OneSignal service
+          try {
+            await oneSignalService.initializeWithUser(session.user.id);
+            console.log('OneSignal service initialized for user:', session.user.id);
+          } catch (error) {
+            console.error('Failed to initialize OneSignal service:', error);
+          }
         }
         
         setLoading(false);
@@ -198,6 +207,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.log('IAP service initialized');
             } catch (error) {
               console.error('Failed to initialize IAP service:', error);
+            }
+
+            // Initialize OneSignal service
+            try {
+              await oneSignalService.initializeWithUser(session.user.id);
+              console.log('OneSignal service initialized for user:', session.user.id);
+            } catch (error) {
+              console.error('Failed to initialize OneSignal service:', error);
             }
             
             // Subscribe to profile changes for real-time updates
@@ -318,6 +335,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('IAP service disconnected');
     } catch (error) {
       console.error('Error disconnecting IAP service:', error);
+    }
+
+    // Logout from OneSignal service
+    try {
+      await oneSignalService.logout();
+      console.log('OneSignal service logged out');
+    } catch (error) {
+      console.error('Error logging out OneSignal service:', error);
     }
     
     await supabase.auth.signOut();

@@ -336,7 +336,7 @@ class GenerationRecoveryService {
       console.log(`Sending failure notification for job: ${job.id}`);
       
       // In a real implementation:
-      // await notificationService.sendNotification(job.userId, {
+      // await oneSignalPushService.sendNotificationToUser(job.userId, {
       //   title: `${job.type} Generation Failed`,
       //   body: `Your ${job.type} generation could not be completed. Credits have been refunded.`,
       //   data: { jobId: job.id, type: 'generation_failed' }

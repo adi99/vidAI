@@ -41,7 +41,7 @@ class CompressionMiddleware {
 
         // Add response caching for static-like content
         this.addResponseCaching(req, res);
-        
+
         next();
       });
     };
@@ -229,7 +229,7 @@ class CompressionMiddleware {
 export const compressionMiddleware = new CompressionMiddleware({
   threshold: 1024,
   level: 6,
-  filter: (req: Request, res: Response) => {
+  filter: (_req: Request, _res: Response) => {
     // Custom filter logic
     return true;
   },

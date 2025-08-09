@@ -13,7 +13,14 @@
       "bundleIdentifier": "com.yourcompany.aiartapp",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to capture photos for AI generation and training.",
-        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images for AI generation and training."
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images for AI generation and training.",
+        "UIBackgroundModes": ["remote-notification"]
+      },
+      "entitlements": {
+        "aps-environment": "development",
+        "com.apple.security.application-groups": [
+          "group.com.yourcompany.aiartapp.onesignal"
+        ]
       }
     },
     "android": {
@@ -31,6 +38,12 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "development"
+        }
+      ],
       "expo-router",
       "expo-font",
       "expo-web-browser",
@@ -40,6 +53,9 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "oneSignalAppId": "YOUR_ONESIGNAL_APP_ID"
     }
   }
 }

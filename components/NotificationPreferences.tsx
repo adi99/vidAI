@@ -98,7 +98,7 @@ export default function NotificationPreferencesComponent({ onPreferencesChange }
       <Text style={styles.subtitle}>Choose which notifications you'd like to receive</Text>
       
       {preferenceItems.map((item) => (
-        <View key={item.key} style={styles.preferenceItem}>
+        <View key={String(item.key)} style={styles.preferenceItem}>
           <View style={styles.preferenceText}>
             <Text style={styles.preferenceTitle}>{item.title}</Text>
             <Text style={styles.preferenceDescription}>{item.description}</Text>

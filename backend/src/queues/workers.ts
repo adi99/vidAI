@@ -3,7 +3,7 @@ import { createWorker, QueueNames, createQueueEvents } from '../config/redis';
 import { moveToDlq } from './index';
 import { logger } from '../config/logger';
 import { supabaseAdmin } from '../config/database';
-import { pushNotificationService } from '../services/pushNotificationService';
+import { oneSignalPushService } from '../services/oneSignalPushService';
 import { automatedModerationService } from '../services/automatedModerationService';
 
 // GPU orchestrator and providers
@@ -193,10 +193,10 @@ const processImage: Processor<ImageJobData, GenericResult> = async (job: Job<Ima
 
       // Send push notification for completion
       try {
-        const { PushNotificationService } = await import('../services/pushNotificationService');
+        const { OneSignalPushService } = await import('../services/oneSignalPushService');
         const jobId = job.id || 'unknown';
-        const template = PushNotificationService.templates.generationComplete('image', jobId);
-        await pushNotificationService.sendNotificationToUser(
+        const template = OneSignalPushService.templates.generationComplete('image', jobId);
+        await oneSignalPushService.sendNotificationToUser(
           job.data.userId,
           template,
           'generation_complete'
@@ -318,10 +318,10 @@ const processVideo: Processor<VideoJobData, GenericResult> = async (job: Job<Vid
 
       // Send push notification for completion
       try {
-        const { PushNotificationService } = await import('../services/pushNotificationService');
+        const { OneSignalPushService } = await import('../services/oneSignalPushService');
         const jobId = job.id || 'unknown';
-        const template = PushNotificationService.templates.generationComplete('video', jobId);
-        await pushNotificationService.sendNotificationToUser(
+        const template = OneSignalPushService.templates.generationComplete('video', jobId);
+        await oneSignalPushService.sendNotificationToUser(
           job.data.userId,
           template,
           'generation_complete'
@@ -434,10 +434,10 @@ const processTraining: Processor<TrainingJobData, GenericResult> = async (job: J
 
     // Send push notification for training completion
     try {
-      const { PushNotificationService } = await import('../services/pushNotificationService');
+      const { OneSignalPushService } = await import('../services/oneSignalPushService');
       const jobId = job.id || 'unknown';
-      const template = PushNotificationService.templates.trainingComplete(modelName, jobId);
-      await pushNotificationService.sendNotificationToUser(
+      const template = OneSignalPushService.templates.trainingComplete(modelName, jobId);
+      await oneSignalPushService.sendNotificationToUser(
         userId,
         template,
         'training_complete'

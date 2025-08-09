@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { authenticateUser, AuthenticatedRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
-import { pushNotificationService } from '../services/pushNotificationService';
+import { oneSignalPushService } from '../services/oneSignalPushService';
 import { logger } from '../config/logger';
 
 const router = Router();
@@ -43,7 +43,7 @@ router.post(
     const userId = req.user!.id;
 
     try {
-      await pushNotificationService.registerPushToken(
+      await oneSignalPushService.registerSubscription(
         userId,
         body.token,
         body.platform
@@ -76,7 +76,7 @@ router.post(
     const userId = req.user!.id;
 
     try {
-      await pushNotificationService.unregisterPushToken(userId, body.token);
+      await oneSignalPushService.unregisterSubscription(userId, body.token);
 
       res.json({
         status: 'success',
@@ -103,7 +103,7 @@ router.get(
     const userId = req.user!.id;
 
     try {
-      const preferences = await pushNotificationService.getNotificationPreferences(userId);
+      const preferences = await oneSignalPushService.getNotificationPreferences(userId);
 
       res.json({
         status: 'success',
@@ -135,11 +135,11 @@ router.put(
       // Filter out undefined values to match the service interface
       const filteredPreferences = Object.fromEntries(
         Object.entries(body).filter(([_, value]) => value !== undefined)
-      ) as Partial<import('../services/pushNotificationService').NotificationPreferences>;
+      ) as Partial<import('../services/oneSignalPushService').NotificationPreferences>;
       
-      await pushNotificationService.updateNotificationPreferences(userId, filteredPreferences);
+      await oneSignalPushService.updateNotificationPreferences(userId, filteredPreferences);
 
-      const updatedPreferences = await pushNotificationService.getNotificationPreferences(userId);
+      const updatedPreferences = await oneSignalPushService.getNotificationPreferences(userId);
 
       res.json({
         status: 'success',
@@ -187,7 +187,7 @@ router.post(
         priority: 'normal' as const,
       };
 
-      await pushNotificationService.sendNotificationToUser(
+      await oneSignalPushService.sendNotificationToUser(
         userId,
         template,
         'system_updates' // Use system_updates preference for test notifications
@@ -228,7 +228,7 @@ router.get(
     }
 
     try {
-      const tokens = await pushNotificationService.getUserPushTokens(userId);
+      const tokens = await oneSignalPushService.getUserSubscriptions(userId);
 
       res.json({
         status: 'success',

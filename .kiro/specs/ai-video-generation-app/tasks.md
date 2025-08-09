@@ -393,24 +393,117 @@
   - Add performance monitoring and optimization
   - _Requirements: 10.5_
 
-- [ ] 28. Create comprehensive testing suite
-- [ ] 28.1 Implement unit and component testing
+- [x] 28. Migrate from Expo Notifications to OneSignal push notification system
+
+
+
+- [x] 28.1 Remove expo-notifications and install OneSignal SDK
+
+
+  - Uninstall expo-notifications package and remove related dependencies
+  - Install onesignal-expo-plugin using `npx expo install onesignal-expo-plugin`
+  - Add react-native-onesignal package using `npm install --save react-native-onesignal`
+  - Remove expo-notifications related code from app/_layout.tsx and contexts/AuthContext.tsx
+  - _Requirements: 8.1, 8.2_
+
+- [x] 28.2 Configure OneSignal Expo plugin and app settings
+
+
+  - Add onesignal-expo-plugin to plugins array in app.json (must be first plugin)
+  - Configure plugin with mode: "development" for testing, "production" for release builds
+  - Add required iOS entitlements: UIBackgroundModes, aps-environment, app groups
+  - Set up Android package configuration in app.json
+  - Add OneSignal App ID to app.json extra configuration for Constants access
+  - Configure notification icons and accent colors for Android
+  - _Requirements: 8.1, 8.3_
+
+
+
+- [ ] 28.3 Initialize OneSignal SDK and implement core functionality
+  - Initialize OneSignal in app/_layout.tsx using OneSignal.initialize() with App ID from Constants
+  - Enable debug logging with OneSignal.Debug.setLogLevel(LogLevel.Verbose) for development
+  - Implement push permission request using OneSignal.Notifications.requestPermission()
+  - Add user identification with OneSignal.login() for External ID assignment
+  - Implement data tags using OneSignal.User.addTag() and OneSignal.User.addTags()
+  - Add email and SMS subscription methods with OneSignal.User.addEmail() and OneSignal.User.addSms()
+
+  - _Requirements: 8.1, 8.2, 8.4_
+
+- [ ] 28.4 Implement OneSignal event listeners and notification handling
+  - Add push notification click listener with OneSignal.Notifications.addClickListener()
+  - Implement foreground notification handling with OneSignal.Notifications.addForegroundLifecycleListener()
+  - Add user state change observer with OneSignal.User.addObserver() for External ID tracking
+  - Implement push permission observer with OneSignal.Notifications.addPermissionObserver()
+  - Add push subscription change observer with OneSignal.User.pushSubscription.addObserver()
+
+
+  - Create in-app message click and lifecycle listeners for enhanced user engagement
+  - _Requirements: 8.2, 8.3, 8.4_
+
+- [ ] 28.5 Update backend API to use OneSignal REST API
+  - Replace Expo Push API calls with OneSignal Create Notification API
+  - Update push token storage to use OneSignal subscription IDs and external IDs
+  - Implement OneSignal API authentication using App API Key
+  - Create notification templates for different event types (generation complete, training done, etc.)
+
+
+  - Add user segmentation support using OneSignal segments and filters
+  - Implement notification scheduling and targeting based on user tags and segments
+  - Add notification delivery tracking and analytics integration
+  - _Requirements: 8.1, 8.2, 8.5_
+
+- [ ] 28.6 Create OneSignal management interface in admin dashboard
+  - Add OneSignal notification management section to app/admin.tsx
+  - Implement notification sending interface with template selection
+
+
+  - Create user segment management and targeting options
+  - Add notification analytics and delivery statistics display
+  - Implement notification scheduling and campaign management
+  - Create push notification testing tools for different user segments
+  - Add notification template editor with personalization support
+  - _Requirements: 8.1, 8.2, 8.5_
+
+
+
+- [ ] 28.7 Implement privacy controls and user consent management
+  - Add consent gating with OneSignal.setConsentRequired() and OneSignal.setConsentGiven()
+  - Implement notification preferences in user profile settings
+  - Create opt-out functionality for different notification types
+  - Add privacy-compliant data collection controls
+  - Implement GDPR and privacy regulation compliance features
+  - Create user data export and deletion capabilities
+  - _Requirements: 8.3, 8.4_
+
+- [ ] 28.8 Test and validate OneSignal integration
+  - Test push notifications on both iOS and Android devices
+  - Validate notification delivery and confirmed delivery tracking
+  - Test in-app message display and interaction handling
+  - Verify user identification and external ID assignment
+  - Test notification targeting and segmentation functionality
+  - Validate notification analytics and reporting
+  - Perform end-to-end testing of notification workflows
+  - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
+
+- [ ] 29. Create comprehensive testing suite
+- [-] 29.1 Implement unit and component testing
+
   - Write unit tests for all components and services
   - Add component testing for UI interactions
   - Create test utilities and mock data
   - _Requirements: All requirements validation_
-- [ ] 28.2 Add integration and API testing
+- [ ] 29.2 Add integration and API testing
   - Add integration tests for API endpoints
   - Implement load testing for queue system
   - Create database integration tests
   - _Requirements: All requirements validation_
-- [ ] 28.3 Create end-to-end and flow testing
+- [ ] 29.3 Create end-to-end and flow testing
   - Create end-to-end tests for critical user flows
   - Add automated testing for IAP and subscription flows
   - Test all tab functionality and navigation
   - _Requirements: All requirements validation_
 
-- [ ] 29. Setup deployment and monitoring infrastructure
+- [ ] 30. Setup deployment and monitoring infrastructure
   - Configure production deployment for backend API
   - Setup database migrations and environment management
   - Implement health checks and monitoring dashboards

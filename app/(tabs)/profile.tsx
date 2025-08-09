@@ -11,11 +11,12 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Settings, Crown, Heart, Grid3x3 as Grid, Film, Bell, Shield, CircleHelp as HelpCircle, LogOut, Check, Star, Zap, TrendingUp, Award, Calendar, Download, Share, Eye, Users, Bookmark, Trash2 } from 'lucide-react-native';
-import { notificationService } from '@/services/notificationService';
-import NotificationPreferences from '@/components/NotificationPreferences';
+import OneSignalNotificationPreferences from '@/components/OneSignalNotificationPreferences';
 import SubscriptionStatusBadge from '@/components/SubscriptionStatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
@@ -36,27 +37,27 @@ export default function ProfileScreen() {
     achievements,
     userContent,
     settings,
-    
+
     // Subscription data
     subscriptionPlans,
     subscriptionStatus: backendSubscriptionStatus,
-    
+
     // Content management
     selectedContentTab,
     setSelectedContentTab,
-    
+
     // Actions
     loadUserData,
     updateSettings,
     shareContent,
     deleteContent,
     manageSubscription,
-    
+
     // State
     isLoading,
     isLoadingContent,
     error,
-    
+
     // Pagination
     hasMoreContent,
     loadMoreContent,
@@ -67,13 +68,30 @@ export default function ProfileScreen() {
 
   const testNotification = async () => {
     try {
-      await notificationService.scheduleLocalNotification(
-        'Test Notification',
-        'This is a test notification to verify the system is working!',
-        { type: 'test' }
-      );
+      if (!user?.id) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      // Send test notification via backend API
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/admin/onesignal/test/${user.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        Alert.alert('Success', result.message || 'Test notification sent successfully!');
+      } else {
+        const error = await response.json();
+        Alert.alert('Error', error.error || 'Failed to send test notification');
+      }
     } catch (error) {
       console.error('Failed to send test notification:', error);
+      Alert.alert('Error', 'Network error occurred while sending test notification');
     }
   };
 
@@ -103,25 +121,25 @@ export default function ProfileScreen() {
   };
 
   const userStats = [
-    { 
-      label: 'Videos Created', 
-      value: stats?.content.videosCreated?.toLocaleString() || '0', 
-      icon: <Film size={16} color="#8B5CF6" /> 
+    {
+      label: 'Videos Created',
+      value: stats?.content.videosCreated?.toLocaleString() || '0',
+      icon: <Film size={16} color="#8B5CF6" />
     },
-    { 
-      label: 'Images Generated', 
-      value: stats?.content.imagesGenerated?.toLocaleString() || '0', 
-      icon: <Grid size={16} color="#EC4899" /> 
+    {
+      label: 'Images Generated',
+      value: stats?.content.imagesGenerated?.toLocaleString() || '0',
+      icon: <Grid size={16} color="#EC4899" />
     },
-    { 
-      label: 'Followers', 
-      value: stats?.social.followers?.toLocaleString() || '0', 
-      icon: <Users size={16} color="#10B981" /> 
+    {
+      label: 'Followers',
+      value: stats?.social.followers?.toLocaleString() || '0',
+      icon: <Users size={16} color="#10B981" />
     },
-    { 
-      label: 'Following', 
-      value: stats?.social.following?.toLocaleString() || '0', 
-      icon: <Heart size={16} color="#EF4444" /> 
+    {
+      label: 'Following',
+      value: stats?.social.following?.toLocaleString() || '0',
+      icon: <Heart size={16} color="#EF4444" />
     },
   ];
 
@@ -142,8 +160,8 @@ export default function ProfileScreen() {
       price: plan.price_monthly === 0 ? 'Free' : `$${plan.price_monthly}`,
       period: plan.price_monthly === 0 ? 'Forever' : '/month',
       color: plan.id === 'basic' ? ['#6B7280', '#6B7280'] :
-             plan.id === 'pro' ? ['#8B5CF6', '#3B82F6'] :
-             ['#F59E0B', '#EF4444'],
+        plan.id === 'pro' ? ['#8B5CF6', '#3B82F6'] :
+          ['#F59E0B', '#EF4444'],
     }));
   };
 
@@ -186,10 +204,10 @@ export default function ProfileScreen() {
         <Text style={styles.achievementTitle}>{achievement.title}</Text>
         <Text style={styles.achievementDescription}>{achievement.description}</Text>
         {achievement.rarity && (
-          <Text style={[styles.achievementRarity, { 
+          <Text style={[styles.achievementRarity, {
             color: achievement.rarity === 'legendary' ? '#F59E0B' :
-                  achievement.rarity === 'epic' ? '#8B5CF6' :
-                  achievement.rarity === 'rare' ? '#10B981' : '#6B7280'
+              achievement.rarity === 'epic' ? '#8B5CF6' :
+                achievement.rarity === 'rare' ? '#10B981' : '#6B7280'
           }]}>
             {achievement.rarity.toUpperCase()}
           </Text>
@@ -239,8 +257,8 @@ export default function ProfileScreen() {
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             const currentPlanId = backendSubscriptionStatus?.planId || 'basic';
-            const action = plan.id === 'basic' ? 'downgrade' : 
-                          currentPlanId === 'basic' ? 'subscribe' : 'upgrade';
+            const action = plan.id === 'basic' ? 'downgrade' :
+              currentPlanId === 'basic' ? 'subscribe' : 'upgrade';
             handleSubscriptionAction(action, plan.id);
           }}
           style={styles.upgradeButton}
@@ -255,8 +273,8 @@ export default function ProfileScreen() {
             style={styles.upgradeGradient}
           >
             <Text style={styles.upgradeButtonText}>
-              {plan.id === 'basic' ? 'Downgrade' : 
-               backendSubscriptionStatus?.planId === 'basic' ? 'Subscribe' : 'Upgrade'}
+              {plan.id === 'basic' ? 'Downgrade' :
+                backendSubscriptionStatus?.planId === 'basic' ? 'Subscribe' : 'Upgrade'}
             </Text>
           </LinearGradient>
         </AnimatedCard>
@@ -340,13 +358,13 @@ export default function ProfileScreen() {
     </AnimatedCard>
   );
 
-  const SettingRow = ({ 
-    icon, 
-    title, 
-    subtitle, 
-    action, 
-    showSwitch = false, 
-    switchValue = false, 
+  const SettingRow = ({
+    icon,
+    title,
+    subtitle,
+    action,
+    showSwitch = false,
+    switchValue = false,
     onSwitchChange,
     danger = false
   }: {
@@ -395,11 +413,11 @@ export default function ProfileScreen() {
     </AnimatedCard>
   );
 
-  const TabButton = ({ 
-    tab, 
-    icon, 
-    title 
-  }: { 
+  const TabButton = ({
+    tab,
+    icon,
+    title
+  }: {
     tab: 'videos' | 'images' | 'liked';
     icon: React.ReactNode;
     title: string;
@@ -427,8 +445,8 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView 
-        style={styles.scrollView} 
+      <ScrollView
+        style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -526,7 +544,7 @@ export default function ProfileScreen() {
                 title="Liked"
               />
             </View>
-            
+
             <SmoothTabTransition
               activeTab={selectedContentTab}
               tabs={[
@@ -685,14 +703,14 @@ export default function ProfileScreen() {
 
           <View style={styles.settingsSection}>
             <Text style={styles.sectionTitle}>Settings & Preferences</Text>
-            
+
             <SettingRow
               icon={<Bell size={24} color="#8B5CF6" />}
               title="Push Notifications"
               subtitle="Manage notification preferences and permissions"
               action={() => setShowNotificationPreferences(true)}
             />
-            
+
             <SettingRow
               icon={<Shield size={24} color="#8B5CF6" />}
               title="Private Profile"
@@ -701,28 +719,28 @@ export default function ProfileScreen() {
               switchValue={settings?.privacy_profile === 'private'}
               onSwitchChange={(value) => handleSettingToggle('privacy_profile', value)}
             />
-            
+
             <SettingRow
               icon={<Download size={24} color="#8B5CF6" />}
               title="Download Quality"
               subtitle="Manage download preferences and formats"
-              action={() => {}}
+              action={() => { }}
             />
-            
+
             <SettingRow
               icon={<Settings size={24} color="#8B5CF6" />}
               title="Account Settings"
               subtitle="Manage your account and preferences"
-              action={() => {}}
+              action={() => { }}
             />
-            
+
             <SettingRow
               icon={<HelpCircle size={24} color="#8B5CF6" />}
               title="Help & Support"
               subtitle="Get help, report issues, and contact support"
-              action={() => {}}
+              action={() => { }}
             />
-            
+
             {__DEV__ && (
               <SettingRow
                 icon={<Bell size={24} color="#F59E0B" />}
@@ -731,7 +749,7 @@ export default function ProfileScreen() {
                 action={testNotification}
               />
             )}
-            
+
             <SettingRow
               icon={<LogOut size={24} color="#EF4444" />}
               title="Sign Out"
@@ -742,7 +760,7 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
-      
+
       {/* Notification Preferences Modal */}
       <Modal
         visible={showNotificationPreferences}
@@ -759,7 +777,7 @@ export default function ProfileScreen() {
               <Text style={styles.modalCloseText}>Done</Text>
             </TouchableOpacity>
           </View>
-          <NotificationPreferences
+          <OneSignalNotificationPreferences
             onPreferencesChange={(preferences) => {
               console.log('Notification preferences updated:', preferences);
             }}

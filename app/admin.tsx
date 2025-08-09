@@ -4,8 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '@/components/ui/Button';
 import PerformanceDashboard from '@/components/PerformanceDashboard';
 import ErrorDashboard from '@/components/ErrorDashboard';
+import OneSignalDashboard from '@/components/OneSignalDashboard';
+import OneSignalTestComponent from '@/components/OneSignalTestComponent';
 
-type DashboardType = 'performance' | 'errors' | null;
+type DashboardType = 'performance' | 'errors' | 'onesignal' | 'onesignal-test' | null;
 
 export default function AdminScreen() {
   const [activeDashboard, setActiveDashboard] = useState<DashboardType>(null);
@@ -16,6 +18,10 @@ export default function AdminScreen() {
         return <PerformanceDashboard />;
       case 'errors':
         return <ErrorDashboard />;
+      case 'onesignal':
+        return <OneSignalDashboard />;
+      case 'onesignal-test':
+        return <OneSignalTestComponent />;
       default:
         return (
           <View style={styles.welcomeContainer}>
@@ -45,6 +51,30 @@ export default function AdminScreen() {
                 <Button
                   title="View Errors"
                   onPress={() => setActiveDashboard('errors')}
+                  style={styles.cardButton}
+                />
+              </View>
+              
+              <View style={styles.dashboardCard}>
+                <Text style={styles.cardTitle}>🔔 OneSignal Push Notifications</Text>
+                <Text style={styles.cardDescription}>
+                  Manage push notifications, user segments, notification templates, and delivery analytics
+                </Text>
+                <Button
+                  title="Manage Notifications"
+                  onPress={() => setActiveDashboard('onesignal')}
+                  style={styles.cardButton}
+                />
+              </View>
+              
+              <View style={styles.dashboardCard}>
+                <Text style={styles.cardTitle}>🧪 OneSignal Integration Test</Text>
+                <Text style={styles.cardDescription}>
+                  Test and validate OneSignal push notification integration, permissions, and delivery
+                </Text>
+                <Button
+                  title="Run Tests"
+                  onPress={() => setActiveDashboard('onesignal-test')}
                   style={styles.cardButton}
                 />
               </View>

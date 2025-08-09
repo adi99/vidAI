@@ -17,6 +17,7 @@ import subscriptionRoutes from './routes/subscription';
 import notificationRoutes from './routes/notifications';
 import moderationRoutes from './routes/moderation';
 import healthRoutes from './routes/health';
+import adminRoutes from './routes/admin';
 
 const app = express();
 
@@ -86,6 +87,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/moderation', moderationRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Queue health routes
 app.use('/health', healthRoutes);
